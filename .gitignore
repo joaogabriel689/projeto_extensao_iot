@@ -1,0 +1,68 @@
+# ==============================================================================
+# SEGURANÇA E DADOS SENSÍVEIS (NUNCA VERSIONAR EM REPOSITÓRIO PÚBLICO)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+
+# Credenciais Wi-Fi e MQTT do Firmware ESP32
+firmware/**/secrets.h
+
+# Arquivos de senhas do Mosquitto (caso gerados localmente)
+mosquitto/config/passwd
+mosquitto/config/*.key
+mosquitto/config/*.crt
+mosquitto/config/*.pem
+
+# ==============================================================================
+# DOCUMENTOS ACADÊMICOS COM DADOS PESSOAIS (MATRÍCULA / DOCUMENTOS INTERNOS)
+# ==============================================================================
+*.pdf
+*.docx
+*.doc
+~$*.docx
+
+# ==============================================================================
+# DADOS PERSISTENTES, BUFFERS E VOLUMES DOCKER
+# ==============================================================================
+mosquitto/data/
+mosquitto/log/
+postgres/data/
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# ==============================================================================
+# PYTHON / AMBIENTES VIRTUAIS
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# PLATFORMIO / ARDUINO / IDEs
+# ==============================================================================
+.pio/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==============================================================================
+# SISTEMA OPERACIONAL (LINUX / WINDOWS / MACOS)
+# ==============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini

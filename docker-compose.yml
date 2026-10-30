@@ -1,0 +1,150 @@
+services:
+  # ----------------------------------------------------------------------------
+  # 1. BROKER MQTT: Eclipse Mosquitto 2.0
+  # Recebe a telemetria do ESP32 (a cada 10s), gerencia LWT (Last Will) e
+  # distribui comandos de acionamento remoto do relé em paralelo.
+  # ----------------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: coutos_mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_HOST_PORT:-1884}:1883"
+      - "${MQTT_WS_HOST_PORT:-9002}:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - coutos_network
+
+  # ----------------------------------------------------------------------------
+  # 2. BANCO DE DADOS RELACIONAL: PostgreSQL 16
+  # Armazena histórico de telemetria, configurações de faixa ideal e alertas,
+  # além do banco dedicado (evolution_db) para a Evolution API.
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: coutos_postgres
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-America/Campo_Grande}
+      POSTGRES_USER: ${POSTGRES_USER:-coutos_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque_esta_senha_segura_123}
+      POSTGRES_DB: ${POSTGRES_DB:-coutos_telemetria}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init/01-init-evolution-db.sql:/docker-entrypoint-initdb.d/01-init-evolution-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coutos_admin} -d ${POSTGRES_DB:-coutos_telemetria}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coutos_network
+
+  # ----------------------------------------------------------------------------
+  # 3. CACHE E FILAS: Redis 7 (Utilizado pela Evolution API)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: coutos_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - coutos_network
+
+  # ----------------------------------------------------------------------------
+  # 4. GATEWAY WHATSAPP: Evolution API v2
+  # Responsável pelo disparo das notificações de anomalia térmica e alerta LWT
+  # diretamente para o WhatsApp do comerciante.
+  # ----------------------------------------------------------------------------
+  evolution_api:
+    image: evoapicloud/evolution-api:latest
+    container_name: coutos_evolution_api
+    restart: unless-stopped
+    ports:
+      - "${EVOLUTION_HOST_PORT:-8081}:8080"
+    environment:
+      TZ: ${TZ:-America/Campo_Grande}
+      SERVER_URL: http://localhost:${EVOLUTION_HOST_PORT:-8081}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-troque_sua_evolution_global_api_key}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-coutos_admin}:${POSTGRES_PASSWORD:-troque_esta_senha_segura_123}@postgres:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
+      DATABASE_CLIENT_NAME: coutos_evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coutos_network
+
+  # ----------------------------------------------------------------------------
+  # 5. BACKEND CENTRAL & WORKER MQTT RESILIENTE (FastAPI + Paho-MQTT + Buffer)
+  # Monitora o broker MQTT em tempo real, valida a faixa ideal de temperatura,
+  # realiza bufferização local em disco se o banco cair (replay idempotente)
+  # e dispara notificações via Evolution API.
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: coutos_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-America/Campo_Grande}
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      EVOLUTION_API_URL: http://evolution_api:8080
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8000"
+    volumes:
+      - backend_buffer_data:/app/data
+    depends_on:
+      mosquitto:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coutos_network
+
+# Volumes nomeados do Docker garantem portabilidade transparente entre Linux e Windows
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+  backend_buffer_data:
+
+networks:
+  coutos_network:
+    driver: bridge
