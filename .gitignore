@@ -51,9 +51,13 @@ env/
 .ruff_cache/
 
 # ==============================================================================
-# PLATFORMIO / ARDUINO / IDEs
+# PLATFORMIO / ARDUINO / IDEs / BINÁRIOS COMPILADOS
 # ==============================================================================
 .pio/
+firmware/**/build/
+*.bin
+*.elf
+*.map
 .vscode/
 .idea/
 *.swp

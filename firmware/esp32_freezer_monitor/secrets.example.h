@@ -23,4 +23,8 @@
 // Identificador único do equipamento monitorado
 #define DEVICE_ID         "camara01"
 
+// Chave secreta compartilhada para validação HMAC-SHA256 de atualizações OTA remotas
+// Deve ser idêntica ao OTA_SHARED_SECRET definido no arquivo .env do servidor
+#define OTA_SHARED_SECRET "coutos_ota_hmac_secret_2026"
+
 #endif

@@ -1,13 +1,15 @@
 services:
   # ----------------------------------------------------------------------------
-  # 1. BROKER MQTT: Eclipse Mosquitto 2.0
-  # Recebe a telemetria do ESP32 (a cada 10s), gerencia LWT (Last Will) e
-  # distribui comandos de acionamento remoto do relé em paralelo.
+  # 1. BROKER MQTT: Eclipse Mosquitto 2.0 (Non-Root UID 1883)
+  # Recebe a telemetria do ESP32, gerencia LWT (Last Will) e ordens OTA assinadas.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: coutos_mosquitto
     restart: unless-stopped
+    user: "1883:1883"
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${MQTT_HOST_PORT:-1884}:1883"
       - "${MQTT_WS_HOST_PORT:-9002}:9001"
@@ -19,21 +21,25 @@ services:
       - coutos_network
 
   # ----------------------------------------------------------------------------
-  # 2. BANCO DE DADOS RELACIONAL: PostgreSQL 16
-  # Armazena histórico de telemetria, configurações de faixa ideal e alertas,
-  # além do banco dedicado (evolution_db) para a Evolution API.
+  # 2. BANCO DE DADOS RELACIONAL: PostgreSQL 16 (Non-Root UID 70)
+  # Armazena telemetria e alertas (acessado por telemetry_app_user) e o banco
+  # evolution_db (acessado exclusivamente por evolution_app_user).
+  # Porta exposta apenas em 127.0.0.1 para nunca ficar aberta na internet pública.
   # ----------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: coutos_postgres
     restart: unless-stopped
+    user: "70:70"
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: ${TZ:-America/Campo_Grande}
       POSTGRES_USER: ${POSTGRES_USER:-coutos_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque_esta_senha_segura_123}
       POSTGRES_DB: ${POSTGRES_DB:-coutos_telemetria}
     ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init/01-init-evolution-db.sql:/docker-entrypoint-initdb.d/01-init-evolution-db.sql:ro
@@ -46,12 +52,15 @@ services:
       - coutos_network
 
   # ----------------------------------------------------------------------------
-  # 3. CACHE E FILAS: Redis 7 (Utilizado pela Evolution API)
+  # 3. CACHE E FILAS: Redis 7 (Non-Root UID 999, Isolado na Rede Interna)
   # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: coutos_redis
     restart: unless-stopped
+    user: "999:999"
+    security_opt:
+      - no-new-privileges:true
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -65,15 +74,17 @@ services:
 
   # ----------------------------------------------------------------------------
   # 4. GATEWAY WHATSAPP: Evolution API v2
-  # Responsável pelo disparo das notificações de anomalia térmica e alerta LWT
-  # diretamente para o WhatsApp do comerciante.
+  # Conecta ao PostgreSQL usando o usuário dedicado (evolution_app_user) restrito
+  # ao banco evolution_db. Porta administrativa restrita ao loopback (127.0.0.1).
   # ----------------------------------------------------------------------------
   evolution_api:
     image: evoapicloud/evolution-api:latest
     container_name: coutos_evolution_api
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "${EVOLUTION_HOST_PORT:-8081}:8080"
+      - "127.0.0.1:${EVOLUTION_HOST_PORT:-8081}:8080"
     environment:
       TZ: ${TZ:-America/Campo_Grande}
       SERVER_URL: http://localhost:${EVOLUTION_HOST_PORT:-8081}
@@ -81,7 +92,7 @@ services:
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-coutos_admin}:${POSTGRES_PASSWORD:-troque_esta_senha_segura_123}@postgres:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
+      DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_DB_USER:-evolution_app_user}:${EVOLUTION_DB_PASSWORD:-troque_senha_app_evolution_123}@postgres:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
       DATABASE_CLIENT_NAME: coutos_evolution
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://redis:6379/6
@@ -99,10 +110,9 @@ services:
       - coutos_network
 
   # ----------------------------------------------------------------------------
-  # 5. BACKEND CENTRAL & WORKER MQTT RESILIENTE (FastAPI + Paho-MQTT + Buffer)
-  # Monitora o broker MQTT em tempo real, valida a faixa ideal de temperatura,
-  # realiza bufferização local em disco se o banco cair (replay idempotente)
-  # e dispara notificações via Evolution API.
+  # 5. BACKEND CENTRAL & WORKER MQTT RESILIENTE (Multi-Stage Non-Root UID 1000)
+  # Opera com usuário dedicado no PostgreSQL (telemetry_app_user) e fica isolado
+  # atrás do Proxy Reverso Nginx (sem expor porta direta no host).
   # ----------------------------------------------------------------------------
   backend:
     build:
@@ -110,6 +120,11 @@ services:
       dockerfile: Dockerfile
     container_name: coutos_backend
     restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     env_file:
       - .env
     environment:
@@ -119,8 +134,8 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       EVOLUTION_API_URL: http://evolution_api:8080
-    ports:
-      - "${BACKEND_HOST_PORT:-8000}:8000"
+    expose:
+      - "8000"
     volumes:
       - backend_buffer_data:/app/data
     depends_on:
@@ -136,7 +151,33 @@ services:
     networks:
       - coutos_network
 
-# Volumes nomeados do Docker garantem portabilidade transparente entre Linux e Windows
+  # ----------------------------------------------------------------------------
+  # 6. PROXY REVERSO HARDENED: Nginx Unprivileged (Non-Root UID 101 + Read-Only)
+  # Protege o Backend e o Painel Web, aplica Rate-Limiting contra força bruta
+  # no login e bloqueia acesso a qualquer arquivo sensível (.env, .sqlite3, etc.).
+  # ----------------------------------------------------------------------------
+  reverse_proxy:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    container_name: coutos_proxy
+    restart: unless-stopped
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - coutos_network
+
 volumes:
   mosquitto_data:
   mosquitto_log:

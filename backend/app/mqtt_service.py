@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import AlertLog, DeviceConfig, TelemetryLog
 from app.notifier import whatsapp_notifier
+from app.ota_manager import ota_manager
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class MQTTTelemetryService:
             topics = [
                 (f"{self.prefix}/+/telemetry", 1),
                 (f"{self.prefix}/+/status", 1),
+                (f"{self.prefix}/+/ota/status", 1),
             ]
             client.subscribe(topics)
             logger.info("[MQTT] Conectado ao Mosquitto! Inscrito em: %s", [t[0] for t in topics])
@@ -84,14 +86,61 @@ class MQTTTelemetryService:
         self._connected = False
         logger.warning("[MQTT] Desconectado do Broker (reason_code=%s). Tentando reconectar...", reason_code)
 
-    def publish_threshold_config(self, device_id: str, min_temp_c: float, max_temp_c: float) -> bool:
-        """Publica a faixa ideal atualizada (com retain=True) para que o ESP32 também a conheça."""
+    def publish_threshold_config(
+        self,
+        device_id: str,
+        min_temp_c: float,
+        max_temp_c: float,
+        telemetry_interval_s: int | None = None,
+    ) -> bool:
+        """Publica a faixa ideal e intervalo de leitura (com retain=True) para sincronizar o ESP32."""
         topic = f"{self.prefix}/{device_id}/config/set"
-        payload = json.dumps({"min_temp_c": min_temp_c, "max_temp_c": max_temp_c})
+        data: Dict[str, Any] = {"min_temp_c": min_temp_c, "max_temp_c": max_temp_c}
+        if telemetry_interval_s is not None:
+            data["telemetry_interval_s"] = int(telemetry_interval_s)
+        payload = json.dumps(data)
         info = self.client.publish(topic, payload=payload, qos=1, retain=True)
         success = info.rc == mqtt.MQTT_ERR_SUCCESS
         logger.info("[MQTT PUB] Tópico=%s | Payload=%s | Sucesso=%s", topic, payload, success)
         return success
+
+    def publish_wifi_command(self, device_id: str, command_data: Dict[str, Any]) -> bool:
+        """Publica comando efêmero (retain=False) para configurar Wi-Fi ou abrir AP no ESP32."""
+        topic = f"{self.prefix}/{device_id}/config/set"
+        payload = json.dumps(command_data)
+        info = self.client.publish(topic, payload=payload, qos=1, retain=False)
+        success = info.rc == mqtt.MQTT_ERR_SUCCESS
+        logger.info("[MQTT WIFI CMD] Tópico=%s | Payload=%s | Sucesso=%s", topic, payload, success)
+        return success
+
+    def publish_ota_trigger(self, device_id: str, signed_ota_payload: Dict[str, Any]) -> bool:
+        """Publica ordem OTA assinada (HMAC-SHA256) com retain=False para nunca repetir sem autorização."""
+        topic = f"{self.prefix}/{device_id}/ota/trigger"
+        payload = json.dumps(signed_ota_payload)
+        info = self.client.publish(topic, payload=payload, qos=1, retain=False)
+        success = info.rc == mqtt.MQTT_ERR_SUCCESS
+        logger.info(
+            "[MQTT OTA TRIGGER] Dispositivo=%s | Versão=%s | SHA256=%s | Sucesso=%s",
+            device_id,
+            signed_ota_payload.get("version"),
+            signed_ota_payload.get("sha256"),
+            success,
+        )
+        return success
+
+    def get_device_runtime_info(self, device_id: str) -> Dict[str, Any]:
+        """Retorna metadados de Wi-Fi, versão de firmware e estado de porta aberta do ESP32."""
+        mem = self._memory_state.get(device_id, {})
+        return {
+            "wifi_ssid": mem.get("wifi_ssid"),
+            "wifi_ip": mem.get("wifi_ip"),
+            "wifi_rssi": mem.get("wifi_rssi"),
+            "ap_active": mem.get("ap_active"),
+            "fw_version": mem.get("fw_version"),
+            "out_of_range_since": mem.get("out_of_range_since"),
+            "out_of_range_elapsed_s": mem.get("out_of_range_elapsed_s", 0),
+            "in_door_open_delay": bool(mem.get("in_door_open_delay", False)),
+        }
 
     def _get_or_create_device_config(self, device_id: str) -> Dict[str, Any]:
         """Obtém a configuração do dispositivo no PostgreSQL ou no cache SQLite local."""
@@ -106,7 +155,9 @@ class MQTTTelemetryService:
                     else f"Freezer / Camara ({device_id})",
                     min_temp_c=settings.default_min_temp_c,
                     max_temp_c=settings.default_max_temp_c,
+                    alert_delay_seconds=settings.alert_delay_seconds,
                     alert_cooldown_seconds=settings.alert_cooldown_seconds,
+                    telemetry_interval_seconds=settings.default_telemetry_interval_seconds,
                     merchant_phone=settings.merchant_whatsapp_number,
                     notifications_enabled=settings.whatsapp_notifications_enabled,
                     online_status="online",
@@ -120,9 +171,20 @@ class MQTTTelemetryService:
                 "name": device.name,
                 "min_temp_c": float(device.min_temp_c),
                 "max_temp_c": float(device.max_temp_c),
+                "alert_delay_seconds": int(
+                    device.alert_delay_seconds
+                    if device.alert_delay_seconds is not None
+                    else settings.alert_delay_seconds
+                ),
                 "alert_cooldown_seconds": int(device.alert_cooldown_seconds),
+                "telemetry_interval_seconds": int(
+                    device.telemetry_interval_seconds
+                    if device.telemetry_interval_seconds is not None
+                    else settings.default_telemetry_interval_seconds
+                ),
                 "merchant_phone": device.merchant_phone or settings.merchant_whatsapp_number,
                 "notifications_enabled": bool(device.notifications_enabled),
+                "out_of_range_since": device.out_of_range_since,
                 "in_alert_state": bool(device.in_alert_state),
                 "last_alert_at": device.last_alert_at,
             }
@@ -134,6 +196,7 @@ class MQTTTelemetryService:
             cached = local_buffer.get_cached_device_config(device_id)
             if cached:
                 mem = self._memory_state.get(device_id, {})
+                cached["out_of_range_since"] = mem.get("out_of_range_since")
                 cached["in_alert_state"] = mem.get("in_alert_state", False)
                 cached["last_alert_at"] = mem.get("last_alert_at")
                 return cached
@@ -142,9 +205,12 @@ class MQTTTelemetryService:
                 "name": settings.default_device_name,
                 "min_temp_c": settings.default_min_temp_c,
                 "max_temp_c": settings.default_max_temp_c,
+                "alert_delay_seconds": settings.alert_delay_seconds,
                 "alert_cooldown_seconds": settings.alert_cooldown_seconds,
+                "telemetry_interval_seconds": settings.default_telemetry_interval_seconds,
                 "merchant_phone": settings.merchant_whatsapp_number,
                 "notifications_enabled": settings.whatsapp_notifications_enabled,
+                "out_of_range_since": self._memory_state.get(device_id, {}).get("out_of_range_since"),
                 "in_alert_state": self._memory_state.get(device_id, {}).get("in_alert_state", False),
                 "last_alert_at": self._memory_state.get(device_id, {}).get("last_alert_at"),
             }
@@ -167,6 +233,8 @@ class MQTTTelemetryService:
                 self._handle_telemetry(device_id, raw_payload)
             elif field_path == "status":
                 self._handle_status_lwt(device_id, raw_payload)
+            elif field_path == "ota/status":
+                self._handle_ota_status(device_id, raw_payload)
         except Exception as exc:
             logger.exception("[MQTT] Erro ao processar mensagem no tópico %s: %s", msg.topic, exc)
 
@@ -182,6 +250,17 @@ class MQTTTelemetryService:
             else:
                 temperature_c = float(data.get("temperature_c", data.get("temp", data.get("temperature"))))
                 event_id = data.get("event_id")
+                mem = self._memory_state.setdefault(device_id, {})
+                if "wifi_ssid" in data:
+                    mem["wifi_ssid"] = data.get("wifi_ssid")
+                if "wifi_ip" in data:
+                    mem["wifi_ip"] = data.get("wifi_ip")
+                if "wifi_rssi" in data:
+                    mem["wifi_rssi"] = data.get("wifi_rssi")
+                if "ap_active" in data:
+                    mem["ap_active"] = bool(data.get("ap_active"))
+                if "fw_version" in data:
+                    mem["fw_version"] = str(data.get("fw_version"))
                 if data.get("timestamp"):
                     try:
                         parsed_dt = datetime.fromisoformat(str(data["timestamp"]))
@@ -243,6 +322,7 @@ class MQTTTelemetryService:
                 device.last_temp_c = temperature_c
                 device.last_seen_at = now
                 device.online_status = "online"
+                device.out_of_range_since = self._memory_state.get(device_id, {}).get("out_of_range_since")
             db.commit()
         except Exception as exc:
             db.rollback()
@@ -259,14 +339,39 @@ class MQTTTelemetryService:
         is_above: bool,
         now: datetime,
     ) -> None:
-        """Verifica se deve disparar alerta de desvio térmico ou de normalização."""
+        """Verifica filtro de porta aberta/reposição (alert_delay_seconds), disparo de alerta e normalização."""
         device_id = cfg["device_id"]
         mem = self._memory_state.setdefault(device_id, {})
         in_alert = mem.get("in_alert_state", cfg.get("in_alert_state", False))
         last_alert_at: datetime | None = mem.get("last_alert_at") or cfg.get("last_alert_at")
-        cooldown_s = cfg["alert_cooldown_seconds"]
+        out_since: datetime | None = mem.get("out_of_range_since") or cfg.get("out_of_range_since")
+        delay_s = max(0, int(cfg.get("alert_delay_seconds", settings.alert_delay_seconds)))
+        cooldown_s = max(10, int(cfg["alert_cooldown_seconds"]))
 
         if is_below or is_above:
+            if out_since is None:
+                out_since = now
+                mem["out_of_range_since"] = now
+            elif out_since.tzinfo is None:
+                out_since = out_since.replace(tzinfo=timezone.utc)
+                mem["out_of_range_since"] = out_since
+
+            elapsed_out_s = max(0, int((now - out_since).total_seconds()))
+            mem["out_of_range_elapsed_s"] = elapsed_out_s
+
+            # Filtro de Porta Aberta / Reposição: aguarda delay_s contínuos fora da faixa antes do 1º disparo
+            if not in_alert and delay_s > 0 and elapsed_out_s < delay_s:
+                mem["in_door_open_delay"] = True
+                logger.info(
+                    "[FILTRO PORTA ABERTA] Device=%s | Temp=%.2f°C fora da faixa há %ds / %ds (aguardando confirmação para evitar alarme falso).",
+                    device_id,
+                    temperature_c,
+                    elapsed_out_s,
+                    delay_s,
+                )
+                return
+
+            mem["in_door_open_delay"] = False
             alert_type = "TEMP_BELOW_MIN" if is_below else "TEMP_ABOVE_MAX"
             should_notify = False
 
@@ -275,8 +380,8 @@ class MQTTTelemetryService:
             else:
                 if last_alert_at.tzinfo is None:
                     last_alert_at = last_alert_at.replace(tzinfo=timezone.utc)
-                elapsed = (now - last_alert_at).total_seconds()
-                if elapsed >= cooldown_s:
+                elapsed_cooldown = (now - last_alert_at).total_seconds()
+                if elapsed_cooldown >= cooldown_s:
                     should_notify = True
 
             if should_notify:
@@ -287,6 +392,7 @@ class MQTTTelemetryService:
                     min_temp_c=cfg["min_temp_c"],
                     max_temp_c=cfg["max_temp_c"],
                     alert_type=alert_type,
+                    duration_seconds=elapsed_out_s,
                 )
                 sent, err = (False, "Notificações desabilitadas para o dispositivo")
                 if cfg.get("notifications_enabled", True):
@@ -306,7 +412,23 @@ class MQTTTelemetryService:
                     last_alert_at=now,
                 )
         else:
-            # Temperatura dentro da faixa ideal: se estava em estado de alerta, notifica normalização
+            # Temperatura voltou para a faixa ideal
+            if out_since is not None and not in_alert:
+                if out_since.tzinfo is None:
+                    out_since = out_since.replace(tzinfo=timezone.utc)
+                recovered_after_s = max(0, int((now - out_since).total_seconds()))
+                logger.info(
+                    "[FILTRO PORTA ABERTA] Device=%s | Temperatura normalizou (%.2f°C) após %ds (tolerância=%ds). Alarme falso evitado!",
+                    device_id,
+                    temperature_c,
+                    recovered_after_s,
+                    delay_s,
+                )
+
+            mem["out_of_range_since"] = None
+            mem["out_of_range_elapsed_s"] = 0
+            mem["in_door_open_delay"] = False
+
             if in_alert:
                 msg_text = whatsapp_notifier.format_recovery_alert(
                     device_name=cfg["name"],
@@ -374,6 +496,25 @@ class MQTTTelemetryService:
                 logger.warning("[MQTT] Não foi possível atualizar status online no DB: %s", exc)
             finally:
                 db.close()
+
+    def _handle_ota_status(self, device_id: str, raw_payload: str) -> None:
+        """Registra o andamento e resultado da atualização OTA reportado pelo ESP32."""
+        try:
+            data = json.loads(raw_payload)
+            if isinstance(data, dict):
+                ota_manager.update_device_ota_status(device_id, data)
+                if data.get("version") and data.get("state") in ("success", "rebooting"):
+                    mem = self._memory_state.setdefault(device_id, {})
+                    mem["fw_version"] = str(data.get("version"))
+                logger.info(
+                    "[MQTT OTA STATUS] Device=%s | Estado=%s | Progresso=%s%% | Msg=%s",
+                    device_id,
+                    data.get("state"),
+                    data.get("progress", 0),
+                    data.get("message", ""),
+                )
+        except Exception as exc:
+            logger.warning("[MQTT OTA STATUS] Payload inválido de %s: %s", device_id, exc)
 
     def _record_alert_in_db(
         self,

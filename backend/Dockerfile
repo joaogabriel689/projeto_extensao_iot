@@ -1,29 +1,54 @@
-FROM python:3.12-slim
+# ==============================================================================
+# STAGE 1: BUILDER (Multi-Stage Build para Performance e Imagem Enxuta)
+# Compila e instala pacotes Python em um ambiente virtual isolado (/opt/venv)
+# compatível tanto com x86_64 quanto com ARM64 (Oracle Cloud Ampere A1).
+# ==============================================================================
+FROM python:3.12-slim AS builder
 
-# Evita geração de arquivos .pyc e garante logs em tempo real no Docker
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /build
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    python -m compileall -q /opt/venv
+
+# ==============================================================================
+# STAGE 2: RUNTIME HARDENED (Execução Non-Root Restrita - UID/GID 1000)
+# ==============================================================================
+FROM python:3.12-slim AS runtime
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONOPTIMIZE=1
 
 WORKDIR /app
 
-# Instala dependências do sistema necessárias para healthcheck e timezone
+# Instala apenas o mínimo necessário para healthcheck e fuso horário
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && \
+    groupadd -g 1000 nonroot && \
+    useradd -u 1000 -g nonroot -s /usr/sbin/nologin -M nonroot && \
+    mkdir -p /app/data/ota && \
+    chown -R 1000:1000 /app && \
+    chmod 700 /app/data /app/data/ota
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder --chown=1000:1000 /opt/venv /opt/venv
+COPY --chown=1000:1000 ./app /app/app
 
-# Cria diretório para o buffer local resiliente (SQLite) com permissões seguras
-RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/data && \
-    chown -R appuser:appuser /app
-
-COPY --chown=appuser:appuser ./app /app/app
-
-USER appuser
+# Executa estritamente sem privilégios de root
+USER 1000:1000
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

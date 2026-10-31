@@ -19,7 +19,9 @@ class DeviceConfig(Base):
     name = Column(String(128), nullable=False)
     min_temp_c = Column(Float, nullable=False, default=-10.0)
     max_temp_c = Column(Float, nullable=False, default=5.0)
+    alert_delay_seconds = Column(Integer, nullable=False, default=180)
     alert_cooldown_seconds = Column(Integer, nullable=False, default=300)
+    telemetry_interval_seconds = Column(Integer, nullable=False, default=10)
     merchant_phone = Column(String(32), nullable=True)
     notifications_enabled = Column(Boolean, nullable=False, default=True)
 
@@ -27,6 +29,7 @@ class DeviceConfig(Base):
     online_status = Column(String(16), nullable=False, default="unknown")
     last_temp_c = Column(Float, nullable=True)
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    out_of_range_since = Column(DateTime(timezone=True), nullable=True)
     in_alert_state = Column(Boolean, nullable=False, default=False)
     last_alert_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -62,3 +65,18 @@ class AlertLog(Base):
     whatsapp_sent = Column(Boolean, nullable=False, default=False)
     whatsapp_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, index=True)
+
+
+class SystemSettings(Base):
+    """Configurações globais da integração Evolution API (WhatsApp) editáveis pela Interface Web."""
+
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, default=1)
+    evolution_api_url = Column(String(256), nullable=False)
+    evolution_api_key = Column(String(256), nullable=False)
+    evolution_instance_name = Column(String(128), nullable=False)
+    merchant_whatsapp_number = Column(String(32), nullable=True)
+    whatsapp_notifications_enabled = Column(Boolean, nullable=False, default=True)
+    replay_interval_seconds = Column(Integer, nullable=False, default=10)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

@@ -57,12 +57,26 @@ class LocalResilientBuffer:
                     name TEXT NOT NULL,
                     min_temp_c REAL NOT NULL,
                     max_temp_c REAL NOT NULL,
+                    alert_delay_seconds INTEGER NOT NULL DEFAULT 180,
                     alert_cooldown_seconds INTEGER NOT NULL,
+                    telemetry_interval_seconds INTEGER NOT NULL DEFAULT 10,
                     merchant_phone TEXT,
                     notifications_enabled INTEGER NOT NULL
                 )
                 """
             )
+            cols = {
+                r["name"]
+                for r in conn.execute("PRAGMA table_info(device_config_cache)").fetchall()
+            }
+            if "alert_delay_seconds" not in cols:
+                conn.execute(
+                    "ALTER TABLE device_config_cache ADD COLUMN alert_delay_seconds INTEGER NOT NULL DEFAULT 180"
+                )
+            if "telemetry_interval_seconds" not in cols:
+                conn.execute(
+                    "ALTER TABLE device_config_cache ADD COLUMN telemetry_interval_seconds INTEGER NOT NULL DEFAULT 10"
+                )
             conn.commit()
 
     def cache_device_config(self, config_data: Dict[str, Any]) -> None:
@@ -72,13 +86,16 @@ class LocalResilientBuffer:
                 """
                 INSERT INTO device_config_cache (
                     device_id, name, min_temp_c, max_temp_c,
-                    alert_cooldown_seconds, merchant_phone, notifications_enabled
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    alert_delay_seconds, alert_cooldown_seconds, telemetry_interval_seconds,
+                    merchant_phone, notifications_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(device_id) DO UPDATE SET
                     name=excluded.name,
                     min_temp_c=excluded.min_temp_c,
                     max_temp_c=excluded.max_temp_c,
+                    alert_delay_seconds=excluded.alert_delay_seconds,
                     alert_cooldown_seconds=excluded.alert_cooldown_seconds,
+                    telemetry_interval_seconds=excluded.telemetry_interval_seconds,
                     merchant_phone=excluded.merchant_phone,
                     notifications_enabled=excluded.notifications_enabled
                 """,
@@ -87,7 +104,14 @@ class LocalResilientBuffer:
                     config_data["name"],
                     float(config_data["min_temp_c"]),
                     float(config_data["max_temp_c"]),
+                    int(config_data.get("alert_delay_seconds", settings.alert_delay_seconds)),
                     int(config_data["alert_cooldown_seconds"]),
+                    int(
+                        config_data.get(
+                            "telemetry_interval_seconds",
+                            settings.default_telemetry_interval_seconds,
+                        )
+                    ),
                     config_data.get("merchant_phone"),
                     1 if config_data.get("notifications_enabled", True) else 0,
                 ),
@@ -108,7 +132,9 @@ class LocalResilientBuffer:
                 "name": row["name"],
                 "min_temp_c": float(row["min_temp_c"]),
                 "max_temp_c": float(row["max_temp_c"]),
+                "alert_delay_seconds": int(row["alert_delay_seconds"]),
                 "alert_cooldown_seconds": int(row["alert_cooldown_seconds"]),
+                "telemetry_interval_seconds": int(row["telemetry_interval_seconds"]),
                 "merchant_phone": row["merchant_phone"],
                 "notifications_enabled": bool(row["notifications_enabled"]),
             }
