@@ -16,6 +16,10 @@ class DeviceConfigResponse(BaseModel):
     replay_interval_seconds: int = 10
     merchant_phone: Optional[str] = None
     notifications_enabled: bool
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: str = "23:00"
+    quiet_hours_end: str = "07:00"
+    in_quiet_hours: bool = False
     online_status: str
     last_temp_c: Optional[float] = None
     last_seen_at: Optional[datetime] = None
@@ -78,6 +82,19 @@ class ThresholdUpdateRequest(BaseModel):
     notifications_enabled: Optional[bool] = Field(
         None, description="Habilita ou desabilita o envio de alertas via WhatsApp"
     )
+    quiet_hours_enabled: Optional[bool] = Field(
+        None, description="Ativa o Modo Sem Alertas para desligamento noturno programado do freezer"
+    )
+    quiet_hours_start: Optional[str] = Field(
+        None,
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="Horário inicial de silêncio de alertas (HH:MM, ex: 23:00)",
+    )
+    quiet_hours_end: Optional[str] = Field(
+        None,
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="Horário final de silêncio de alertas (HH:MM, ex: 07:00)",
+    )
 
     @model_validator(mode="after")
     def validate_temp_range(self):
@@ -125,11 +142,20 @@ class TestNotificationRequest(BaseModel):
 
 
 class EvolutionSettingsUpdateRequest(BaseModel):
-    evolution_api_url: str = Field(..., min_length=5, description="URL base da Evolution API (ex: http://evolution_api:8080)")
-    evolution_api_key: str = Field(..., min_length=1, description="Global API Key da Evolution API")
-    evolution_instance_name: str = Field(..., min_length=1, description="Nome da instância WhatsApp (ex: coutos_alertas)")
-    merchant_whatsapp_number: Optional[str] = Field(None, description="Número de WhatsApp de destino (ex: 5511999999999)")
+    evolution_api_url: str = Field(..., min_length=7, max_length=256, description="URL base da Evolution API (ex: http://evolution_api:8080)")
+    evolution_api_key: Optional[str] = Field(None, max_length=256, description="Global API Key da Evolution API (deixe em branco ou mascarada para manter a atual)")
+    evolution_instance_name: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.-]+$", description="Nome da instância WhatsApp (ex: coutos_alertas)")
+    merchant_whatsapp_number: Optional[str] = Field(None, max_length=32, description="Número de WhatsApp de destino (ex: 5511999999999)")
     whatsapp_notifications_enabled: bool = Field(True, description="Ativa ou desativa o envio de alertas")
+
+    @model_validator(mode="after")
+    def validate_url_scheme(self):
+        url = self.evolution_api_url.strip().lower()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError("evolution_api_url deve iniciar com http:// ou https://.")
+        if "@" in url or "169.254.169.254" in url:
+            raise ValueError("evolution_api_url contém destino não permitido por política de segurança (Anti-SSRF).")
+        return self
 
 
 class EvolutionSettingsResponse(BaseModel):
@@ -146,3 +172,55 @@ class EvolutionSettingsResponse(BaseModel):
 class DashboardLoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=64)
     password: str = Field(..., min_length=1, max_length=128)
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str] = None
+    role: str
+    is_active: bool
+    failed_login_attempts: int = 0
+    locked_until: Optional[datetime] = None
+    session_version: int = 1
+    last_login_at: Optional[datetime] = None
+    last_login_ip: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_.-]+$")
+    full_name: Optional[str] = Field(None, max_length=128)
+    password: str = Field(..., min_length=8, max_length=128)
+    role: str = Field("operator", pattern=r"^(admin|operator)$")
+    is_active: bool = Field(True)
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(None, max_length=128)
+    role: Optional[str] = Field(None, pattern=r"^(admin|operator)$")
+    is_active: Optional[bool] = None
+    new_password: Optional[str] = Field(None, min_length=8, max_length=128)
+    unlock_account: bool = Field(False)
+    revoke_sessions: bool = Field(False)
+
+
+class ChangeOwnPasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class AuditLogResponse(BaseModel):
+    id: int
+    username: str
+    action: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    details: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

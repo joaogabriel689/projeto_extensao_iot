@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+import re
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,11 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, text
 
 from app.api.routes import router as api_router
-from app.auth import SecurityAndAuthMiddleware
+from app.auth import SecurityAndAuthMiddleware, hash_password
 from app.buffer import local_buffer
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.models import DeviceConfig, SystemSettings
+from app.models import DeviceConfig, SystemSettings, User
 from app.mqtt_service import mqtt_service
 from app.notifier import whatsapp_notifier
 
@@ -27,6 +28,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+_SAFE_PG_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+
+
+def _validate_pg_ident(identifier: str, label: str) -> str:
+    """Garante que identificadores SQL (roles/databases) obedeçam estritamente ao padrão seguro."""
+    clean = (identifier or "").strip()
+    if not _SAFE_PG_IDENT_RE.match(clean):
+        raise ValueError(f"Identificador PostgreSQL inválido para {label}: {clean!r}")
+    return clean
 
 
 def _bootstrap_dedicated_roles_and_schema() -> None:
@@ -34,12 +44,12 @@ def _bootstrap_dedicated_roles_and_schema() -> None:
     admin_engine = create_engine(settings.admin_database_url, pool_pre_ping=True)
     try:
         Base.metadata.create_all(bind=admin_engine)
-        app_user = settings.postgres_app_user
+        app_user = _validate_pg_ident(settings.postgres_app_user, "POSTGRES_APP_USER") if settings.postgres_app_user else ""
         app_pass = settings.postgres_app_password.replace("'", "''")
-        evo_user = settings.evolution_db_user
+        evo_user = _validate_pg_ident(settings.evolution_db_user, "EVOLUTION_DB_USER") if settings.evolution_db_user else ""
         evo_pass = settings.evolution_db_password.replace("'", "''")
-        db_name = settings.postgres_db
-        evo_db = settings.evolution_db_name
+        db_name = _validate_pg_ident(settings.postgres_db, "POSTGRES_DB")
+        evo_db = _validate_pg_ident(settings.evolution_db_name, "EVOLUTION_DB_NAME")
 
         with admin_engine.begin() as conn:
             conn.execute(
@@ -55,6 +65,21 @@ def _bootstrap_dedicated_roles_and_schema() -> None:
             conn.execute(
                 text(
                     "ALTER TABLE devices ADD COLUMN IF NOT EXISTS out_of_range_since TIMESTAMPTZ NULL;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS quiet_hours_start VARCHAR(8) NOT NULL DEFAULT '23:00';"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS quiet_hours_end VARCHAR(8) NOT NULL DEFAULT '07:00';"
                 )
             )
             conn.execute(
@@ -121,7 +146,7 @@ def _bootstrap_dedicated_roles_and_schema() -> None:
         evo_engine = create_engine(evo_admin_url, pool_pre_ping=True)
         try:
             with evo_engine.begin() as conn:
-                eu = settings.evolution_db_user
+                eu = _validate_pg_ident(settings.evolution_db_user, "EVOLUTION_DB_USER")
                 conn.execute(text(f"GRANT ALL ON SCHEMA public TO {eu};"))
                 conn.execute(text(f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {eu};"))
                 conn.execute(text(f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {eu};"))
@@ -138,11 +163,32 @@ def _bootstrap_dedicated_roles_and_schema() -> None:
 
 
 def init_db_and_default_device() -> None:
-    """Cria as tabelas no PostgreSQL, configura roles dedicadas e garante o cadastro inicial."""
+    """Cria as tabelas no PostgreSQL, configura roles dedicadas, usuário admin inicial e dispositivo padrão."""
     try:
         _bootstrap_dedicated_roles_and_schema()
         db = SessionLocal()
         try:
+            # 1. Garante usuário Administrador inicial no banco de dados (PBKDF2-HMAC-SHA256)
+            user_count = db.query(User).count()
+            if user_count == 0:
+                initial_username = (settings.dashboard_username or "admin").strip()
+                initial_password = settings.dashboard_password or "coutos_painel_2026"
+                admin_user = User(
+                    username=initial_username,
+                    full_name="Administrador Principal",
+                    password_hash=hash_password(initial_password),
+                    role="admin",
+                    is_active=True,
+                    session_version=1,
+                )
+                db.add(admin_user)
+                db.commit()
+                logger.info(
+                    "[DB INIT] Usuário administrador inicial '%s' criado no PostgreSQL (PBKDF2-HMAC-SHA256).",
+                    initial_username,
+                )
+
+            # 2. Garante configurações globais da Evolution API
             sys_cfg = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
             if not sys_cfg:
                 sys_cfg = SystemSettings(
@@ -170,6 +216,7 @@ def init_db_and_default_device() -> None:
                 whatsapp_notifications_enabled=sys_cfg.whatsapp_notifications_enabled,
             )
 
+            # 3. Garante dispositivo padrão (câmara fria / freezer)
             device = (
                 db.query(DeviceConfig)
                 .filter(DeviceConfig.device_id == settings.default_device_id)
@@ -186,6 +233,9 @@ def init_db_and_default_device() -> None:
                     telemetry_interval_seconds=settings.default_telemetry_interval_seconds,
                     merchant_phone=sys_cfg.merchant_whatsapp_number,
                     notifications_enabled=sys_cfg.whatsapp_notifications_enabled,
+                    quiet_hours_enabled=settings.default_quiet_hours_enabled,
+                    quiet_hours_start=settings.default_quiet_hours_start,
+                    quiet_hours_end=settings.default_quiet_hours_end,
                     online_status="unknown",
                 )
                 db.add(device)
@@ -209,6 +259,9 @@ def init_db_and_default_device() -> None:
                     "telemetry_interval_seconds": device.telemetry_interval_seconds,
                     "merchant_phone": device.merchant_phone,
                     "notifications_enabled": device.notifications_enabled,
+                    "quiet_hours_enabled": device.quiet_hours_enabled,
+                    "quiet_hours_start": device.quiet_hours_start,
+                    "quiet_hours_end": device.quiet_hours_end,
                 }
             )
         finally:
@@ -257,21 +310,30 @@ app = FastAPI(
     title="Sistema Coutos Conveniência - Telemetria Térmica Resiliente (IoT & MQTT)",
     description=(
         "API, Interface Web e Worker de Telemetria MQTT com detecção de anomalias térmicas, "
-        "suporte a Last Will and Testament (LWT), buffer local tolerante a falhas "
-        "e notificações via WhatsApp (Evolution API)."
+        "suporte a Last Will and Testament (LWT), buffer local tolerante a falhas, "
+        "gestão de usuários RBAC no PostgreSQL e notificações via WhatsApp (Evolution API)."
     ),
-    version="1.0.0",
+    version="1.2.0",
     lifespan=lifespan,
+    docs_url="/docs" if settings.enable_swagger_docs else None,
+    redoc_url="/redoc" if settings.enable_swagger_docs else None,
+    openapi_url="/openapi.json" if settings.enable_swagger_docs else None,
 )
 
 app.add_middleware(SecurityAndAuthMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+# Configuração segura de CORS: apenas origens explicitamente autorizadas no .env
+_allowed_origins = [
+    o.strip() for o in (settings.cors_allowed_origins or "").split(",") if o.strip()
+]
+if _allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "X-CSRF-Token", "X-API-Key", "X-OTA-Secret"],
+    )
 
 app.include_router(api_router)
 
@@ -279,10 +341,22 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.get("/login", include_in_schema=False)
+def serve_login_page():
+    """Entrega a página dedicada de autenticação do Painel Web."""
+    return FileResponse(str(STATIC_DIR / "login.html"))
+
+
 @app.get("/", include_in_schema=False)
 def serve_web_dashboard():
-    """Entrega a Interface Web de Monitoramento e Configuração."""
+    """Entrega a Interface Web de Monitoramento e Configuração (protegida por sessão)."""
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/admin", include_in_schema=False)
+def serve_admin_page():
+    """Entrega a Página Administrativa de Gestão de Usuários, Senhas e Auditoria de Segurança."""
+    return FileResponse(str(STATIC_DIR / "admin.html"))
 
 
 @app.get("/health", tags=["Health"])

@@ -77,18 +77,31 @@ class LocalResilientBuffer:
                 conn.execute(
                     "ALTER TABLE device_config_cache ADD COLUMN telemetry_interval_seconds INTEGER NOT NULL DEFAULT 10"
                 )
+            if "quiet_hours_enabled" not in cols:
+                conn.execute(
+                    "ALTER TABLE device_config_cache ADD COLUMN quiet_hours_enabled INTEGER NOT NULL DEFAULT 0"
+                )
+            if "quiet_hours_start" not in cols:
+                conn.execute(
+                    "ALTER TABLE device_config_cache ADD COLUMN quiet_hours_start TEXT NOT NULL DEFAULT '23:00'"
+                )
+            if "quiet_hours_end" not in cols:
+                conn.execute(
+                    "ALTER TABLE device_config_cache ADD COLUMN quiet_hours_end TEXT NOT NULL DEFAULT '07:00'"
+                )
             conn.commit()
 
     def cache_device_config(self, config_data: Dict[str, Any]) -> None:
-        """Mantém cópia local da faixa ideal para operar mesmo sem o banco principal."""
+        """Mantém cópia local da faixa ideal e modo noturno para operar mesmo sem o banco principal."""
         with self._get_conn() as conn:
             conn.execute(
                 """
                 INSERT INTO device_config_cache (
                     device_id, name, min_temp_c, max_temp_c,
                     alert_delay_seconds, alert_cooldown_seconds, telemetry_interval_seconds,
-                    merchant_phone, notifications_enabled
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    merchant_phone, notifications_enabled,
+                    quiet_hours_enabled, quiet_hours_start, quiet_hours_end
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(device_id) DO UPDATE SET
                     name=excluded.name,
                     min_temp_c=excluded.min_temp_c,
@@ -97,7 +110,10 @@ class LocalResilientBuffer:
                     alert_cooldown_seconds=excluded.alert_cooldown_seconds,
                     telemetry_interval_seconds=excluded.telemetry_interval_seconds,
                     merchant_phone=excluded.merchant_phone,
-                    notifications_enabled=excluded.notifications_enabled
+                    notifications_enabled=excluded.notifications_enabled,
+                    quiet_hours_enabled=excluded.quiet_hours_enabled,
+                    quiet_hours_start=excluded.quiet_hours_start,
+                    quiet_hours_end=excluded.quiet_hours_end
                 """,
                 (
                     config_data["device_id"],
@@ -114,6 +130,9 @@ class LocalResilientBuffer:
                     ),
                     config_data.get("merchant_phone"),
                     1 if config_data.get("notifications_enabled", True) else 0,
+                    1 if config_data.get("quiet_hours_enabled", False) else 0,
+                    str(config_data.get("quiet_hours_start") or "23:00"),
+                    str(config_data.get("quiet_hours_end") or "07:00"),
                 ),
             )
             conn.commit()
@@ -137,6 +156,9 @@ class LocalResilientBuffer:
                 "telemetry_interval_seconds": int(row["telemetry_interval_seconds"]),
                 "merchant_phone": row["merchant_phone"],
                 "notifications_enabled": bool(row["notifications_enabled"]),
+                "quiet_hours_enabled": bool(row["quiet_hours_enabled"]),
+                "quiet_hours_start": str(row["quiet_hours_start"] or "23:00"),
+                "quiet_hours_end": str(row["quiet_hours_end"] or "07:00"),
             }
 
     def enqueue_telemetry(self, item: Dict[str, Any]) -> None:

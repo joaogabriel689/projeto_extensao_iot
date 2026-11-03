@@ -21,7 +21,7 @@ API_KEY := $(shell grep -E '^API_SECRET_KEY=' .env 2>/dev/null | cut -d= -f2- ||
 
 .PHONY: help setup ip up down restart ps \
         logs logs-backend logs-mqtt logs-whatsapp mqtt-watch \
-        status telemetry alerts devices set-range test-whatsapp db-shell db-users oracle-firewall \
+        status telemetry alerts devices set-range test-whatsapp db-shell db-users oracle-firewall vps-firewall-ddos \
         esp-compile esp-build-bin esp-upload esp-ota esp-monitor \
         simulate simulate-alert simulate-lwt
 
@@ -134,6 +134,25 @@ oracle-firewall: ## Configura regras de firewall (iptables) na VM Oracle Cloud A
 	sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 1884 -j ACCEPT
 	sudo netfilter-persistent save || true
 	@echo "✅ Portas 8000 (Proxy Web) e 1884 (MQTT) liberadas no iptables da Oracle Cloud!"
+
+vps-firewall-ddos: ## Aplica proteção DDoS no Kernel Linux (SYN Cookies, Anti-Spoofing) e iptables (portas 8000 e 1884) na VPS
+	@echo "🛡️  Aplicando hardening de Kernel (sysctl) contra SYN Flood e IP Spoofing..."
+	sudo sysctl -w net.ipv4.tcp_syncookies=1
+	sudo sysctl -w net.ipv4.tcp_max_syn_backlog=4096
+	sudo sysctl -w net.ipv4.tcp_synack_retries=2
+	sudo sysctl -w net.ipv4.tcp_syn_retries=2
+	sudo sysctl -w net.ipv4.tcp_fin_timeout=15
+	sudo sysctl -w net.ipv4.conf.all.rp_filter=1
+	sudo sysctl -w net.ipv4.conf.default.rp_filter=1
+	sudo sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1
+	@echo "🛡️  Aplicando limites de conexão e pacotes inválidos no iptables (INPUT e DOCKER-USER)..."
+	sudo iptables -A INPUT -m conntrack --ctstate INVALID -j DROP || true
+	sudo iptables -A INPUT -p tcp ! --syn -m conntrack --ctstate NEW -j DROP || true
+	sudo iptables -I DOCKER-USER -m conntrack --ctstate INVALID -j DROP 2>/dev/null || true
+	sudo iptables -I DOCKER-USER -p tcp --dport 1884 -m connlimit --connlimit-above 15 --connlimit-mask 32 -j DROP 2>/dev/null || true
+	sudo iptables -I DOCKER-USER -p tcp --dport 8000 -m connlimit --connlimit-above 30 --connlimit-mask 32 -j DROP 2>/dev/null || true
+	sudo netfilter-persistent save 2>/dev/null || true
+	@echo "✅ Proteção DDoS de Kernel e Firewall aplicada com sucesso!"
 
 # ------------------------------------------------------------------------------
 # 5. ESP32 FIRMWARE (COMPILAÇÃO, UPLOAD USB, OTA REMOTO SEGURO E MONITOR SERIAL)

@@ -1,7 +1,27 @@
+# ==============================================================================
+# SISTEMA COUTOS CONVENIÊNCIA — DOCKER COMPOSE HARDENED, SEGREGADO & OTIMIZADO
+# Dimensionado para VPS 4 da Contabo (4 vCPUs / 8 GB RAM):
+# - Soma máxima de RAM dos contêineres: ~5.3 GB (~2.7 GB livres para SO/Cache)
+# - Rotação automática de logs (máx. 30 MB por serviço) para proteger o SSD
+# - Execução Non-Root, Read-Only RootFS, Cap-Drop ALL e No-New-Privileges
+# - Micro-segmentação em 4 Redes Isoladas (Zero-Trust):
+#     1. edge_proxy_net    : reverse_proxy <-> backend
+#     2. mqtt_iot_net      : mosquitto <-> backend
+#     3. whatsapp_net      : evolution_api <-> backend
+#     4. data_internal_net : postgres + redis <-> backend + evolution_api
+# ==============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ----------------------------------------------------------------------------
-  # 1. BROKER MQTT: Eclipse Mosquitto 2.0 (Non-Root UID 1883)
-  # Recebe a telemetria do ESP32, gerencia LWT (Last Will) e ordens OTA assinadas.
+  # 1. BROKER MQTT: Eclipse Mosquitto 2.0 (Non-Root UID 1883 + Auth Dinâmica)
+  # Isolado exclusivamente na rede `mqtt_iot_net` (sem acesso a Postgres, Redis,
+  # Evolution API ou Proxy Nginx).
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0
@@ -10,21 +30,45 @@ services:
     user: "1883:1883"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777,size=16m
+    cpus: 0.50
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/Campo_Grande}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-loja/freezer}
+    entrypoint: ["/bin/sh", "/docker-entrypoint-auth.sh"]
     ports:
       - "${MQTT_HOST_PORT:-1884}:1883"
-      - "${MQTT_WS_HOST_PORT:-9002}:9001"
+      - "127.0.0.1:${MQTT_WS_HOST_PORT:-9002}:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/docker-entrypoint-auth.sh:/docker-entrypoint-auth.sh:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mosquitto_sub -p 1883 -u \"$$MQTT_USERNAME\" -P \"$$MQTT_PASSWORD\" -t '$$SYS/broker/uptime' -C 1 -W 3 >/dev/null 2>&1 || mosquitto_sub -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 3 >/dev/null 2>&1"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
-      - coutos_network
+      - mqtt_iot_net
 
   # ----------------------------------------------------------------------------
-  # 2. BANCO DE DADOS RELACIONAL: PostgreSQL 16 (Non-Root UID 70)
-  # Armazena telemetria e alertas (acessado por telemetry_app_user) e o banco
-  # evolution_db (acessado exclusivamente por evolution_app_user).
-  # Porta exposta apenas em 127.0.0.1 para nunca ficar aberta na internet pública.
+  # 2. BANCO DE DADOS RELACIONAL: PostgreSQL 16 (Non-Root UID 70 + Tuned 8GB VPS)
+  # Isolado na rede `data_internal_net` (inacessível a partir do Nginx e do Mosquitto).
+  # Porta de manutenção restrita a 127.0.0.1 no host.
   # ----------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
@@ -33,6 +77,30 @@ services:
     user: "70:70"
     security_opt:
       - no-new-privileges:true
+    shm_size: 256mb
+    cpus: 1.00
+    mem_limit: 1536m
+    mem_reservation: 512m
+    pids_limit: 200
+    logging: *default-logging
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=384MB"
+      - "-c"
+      - "effective_cache_size=1GB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "synchronous_commit=local"
+      - "-c"
+      - "random_page_cost=1.1"
     environment:
       TZ: ${TZ:-America/Campo_Grande}
       POSTGRES_USER: ${POSTGRES_USER:-coutos_admin}
@@ -49,10 +117,11 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - coutos_network
+      - data_internal_net
 
   # ----------------------------------------------------------------------------
-  # 3. CACHE E FILAS: Redis 7 (Non-Root UID 999, Isolado na Rede Interna)
+  # 3. CACHE E FILAS: Redis 7 (Non-Root UID 999, Isolado em data_internal_net)
+  # Sem portas expostas no host e inacessível por Nginx ou Mosquitto.
   # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
@@ -61,7 +130,25 @@ services:
     user: "999:999"
     security_opt:
       - no-new-privileges:true
-    command: ["redis-server", "--appendonly", "yes"]
+    cap_drop:
+      - ALL
+    cpus: 0.50
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "everysec",
+        "--maxmemory",
+        "384mb",
+        "--maxmemory-policy",
+        "allkeys-lru"
+      ]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -70,12 +157,12 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - coutos_network
+      - data_internal_net
 
   # ----------------------------------------------------------------------------
-  # 4. GATEWAY WHATSAPP: Evolution API v2
-  # Conecta ao PostgreSQL usando o usuário dedicado (evolution_app_user) restrito
-  # ao banco evolution_db. Porta administrativa restrita ao loopback (127.0.0.1).
+  # 4. GATEWAY WHATSAPP: Evolution API v2 (Node V8 Heap Limitado a 1.5GB)
+  # Conectado apenas a `whatsapp_net` (comunicação com Backend) e `data_internal_net`
+  # (acesso restrito ao evolution_db e Redis). Isolado do Nginx e do Mosquitto.
   # ----------------------------------------------------------------------------
   evolution_api:
     image: evoapicloud/evolution-api:latest
@@ -83,13 +170,19 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cpus: 1.00
+    mem_limit: 2048m
+    mem_reservation: 512m
+    pids_limit: 300
+    logging: *default-logging
     ports:
       - "127.0.0.1:${EVOLUTION_HOST_PORT:-8081}:8080"
     environment:
       TZ: ${TZ:-America/Campo_Grande}
+      NODE_OPTIONS: "--max-old-space-size=1536"
       SERVER_URL: http://localhost:${EVOLUTION_HOST_PORT:-8081}
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-troque_sua_evolution_global_api_key}
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_DB_USER:-evolution_app_user}:${EVOLUTION_DB_PASSWORD:-troque_senha_app_evolution_123}@postgres:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
@@ -107,12 +200,12 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - coutos_network
+      - whatsapp_net
+      - data_internal_net
 
   # ----------------------------------------------------------------------------
-  # 5. BACKEND CENTRAL & WORKER MQTT RESILIENTE (Multi-Stage Non-Root UID 1000)
-  # Opera com usuário dedicado no PostgreSQL (telemetry_app_user) e fica isolado
-  # atrás do Proxy Reverso Nginx (sem expor porta direta no host).
+  # 5. BACKEND CENTRAL & WORKER MQTT RESILIENTE (Multi-Stage Non-Root UID 1000 + Read-Only)
+  # Orquestrador central que conecta as 4 redes segregadas sem expor porta direta no host.
   # ----------------------------------------------------------------------------
   backend:
     build:
@@ -121,10 +214,18 @@ services:
     container_name: coutos_backend
     restart: unless-stopped
     user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cpus: 1.00
+    mem_limit: 768m
+    mem_reservation: 256m
+    pids_limit: 150
+    logging: *default-logging
     env_file:
       - .env
     environment:
@@ -144,17 +245,20 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - coutos_network
+      - edge_proxy_net
+      - mqtt_iot_net
+      - whatsapp_net
+      - data_internal_net
 
   # ----------------------------------------------------------------------------
-  # 6. PROXY REVERSO HARDENED: Nginx Unprivileged (Non-Root UID 101 + Read-Only)
-  # Protege o Backend e o Painel Web, aplica Rate-Limiting contra força bruta
-  # no login e bloqueia acesso a qualquer arquivo sensível (.env, .sqlite3, etc.).
+  # 6. PROXY REVERSO HARDENED & ANTI-DDOS: Nginx Unprivileged (UID 101 + Read-Only)
+  # Isolado exclusivamente na rede `edge_proxy_net` (só enxerga `backend:8000`,
+  # sem qualquer rota de rede para PostgreSQL, Redis, Mosquitto ou Evolution API).
   # ----------------------------------------------------------------------------
   reverse_proxy:
     image: nginxinc/nginx-unprivileged:1.27-alpine
@@ -168,6 +272,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cpus: 0.50
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
     ports:
       - "${BACKEND_HOST_PORT:-8000}:8080"
     volumes:
@@ -175,8 +284,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     networks:
-      - coutos_network
+      - edge_proxy_net
 
 volumes:
   mosquitto_data:
@@ -186,6 +300,42 @@ volumes:
   evolution_instances:
   backend_buffer_data:
 
+# ------------------------------------------------------------------------------
+# REDES SEGREGADAS (MICRO-SEGMENTAÇÃO ZERO-TRUST COM SUB-REDES /28 DEDICADAS)
+# ------------------------------------------------------------------------------
 networks:
-  coutos_network:
+  # Rede de Borda HTTP: Apenas Nginx Reverse Proxy <-> Backend FastAPI
+  edge_proxy_net:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_coutos_edge
+    ipam:
+      config:
+        - subnet: 10.240.1.0/28
+
+  # Rede IoT MQTT: Apenas Broker Mosquitto <-> Backend Worker MQTT
+  mqtt_iot_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_coutos_mqtt
+    ipam:
+      config:
+        - subnet: 10.240.2.0/28
+
+  # Rede Gateway WhatsApp: Apenas Evolution API <-> Backend FastAPI
+  whatsapp_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_coutos_wa
+    ipam:
+      config:
+        - subnet: 10.240.3.0/28
+
+  # Rede Interna de Persistência e Cache: Apenas PostgreSQL + Redis <-> Backend + Evolution
+  data_internal_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br_coutos_data
+    ipam:
+      config:
+        - subnet: 10.240.4.0/28

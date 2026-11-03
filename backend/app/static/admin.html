@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coutos Conveniência</title>
+  <link rel="stylesheet" href="/static/css/framework.css" />
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-group">
+        <a href="/" class="brand">
+          <span class="brand-logo">CC</span>
+          <div class="brand-text">
+            <h1>Coutos Conveniência</h1>
+            <span class="subtitle">Administração</span>
+          </div>
+        </a>
+        <nav class="main-nav" aria-label="Navegação Principal">
+          <a href="/">Painel Operacional</a>
+          <a href="/admin" class="active">Usuários</a>
+        </nav>
+      </div>
+
+      <div class="topbar-status">
+        <span class="badge badge-info" id="lbl-current-user">Autenticando...</span>
+        <button class="btn btn-sm" id="btn-refresh-admin" type="button">Atualizar</button>
+        <button class="btn btn-sm" id="btn-theme-toggle" type="button">☾ Escuro</button>
+        <button class="btn btn-sm btn-danger" id="btn-logout" type="button">Sair</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- KPI Security Strip -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Usuários no PostgreSQL</span>
+          <span class="badge badge-info">Tabela users</span>
+        </div>
+        <div class="kpi-value tabular" id="kpi-total-users">--</div>
+        <div class="kpi-meta">
+          <span></span>
+          <span class="tabular"></span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Administradores Ativos</span>
+          <span class="badge badge-ok"></span>
+        </div>
+        <div class="kpi-value tabular" id="kpi-active-admins">--</div>
+        <div class="kpi-meta">
+          <span>Proteção contra órfão</span>
+          <span>Ativa</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Contas em Lockout</span>
+          <span class="badge badge-neutral" id="badge-lockout-state">Brute-Force</span>
+        </div>
+        <div class="kpi-value tabular" id="kpi-locked-users">0</div>
+        <div class="kpi-meta">
+          <span>Bloqueio automático</span>
+          <span>5 falhas / 15m</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Proteções Web Ativas</span>
+          <span class="badge badge-ok">Hardened</span>
+        </div>
+        <div class="kpi-value small"></div>
+        <div class="kpi-meta">
+          <span>SameSite=Strict</span>
+          <span class="tabular" id="kpi-audit-count">0 eventos</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sub-Navigation Tabs -->
+    <div class="tabs-bar" role="tablist">
+      <button type="button" class="tab-btn active" data-tab="pane-users" id="tab-btn-users">Usuários Cadastrados (PostgreSQL)</button>
+      <button type="button" class="tab-btn" data-tab="pane-audit" id="tab-btn-audit">Trilha de Auditoria (Audit Logs)</button>
+      <button type="button" class="tab-btn" data-tab="pane-profile">Minha Senha &amp; Sessão</button>
+    </div>
+
+    <!-- TAB 1: User Management (Admin Only) -->
+    <div id="pane-users" class="tab-pane active">
+      <section class="card" id="card-users-admin">
+        <div class="card-header">
+          <div>
+            <h2>Gerenciamento de Usuários do Sistema</h2>
+            <p>Cadastre operadores ou administradores no PostgreSQL, redefina senhas, desbloqueie contas ou revogue sessões ativas</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-open-create-user">+ Novo Usuário</button>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div class="table-wrap" style="max-height: 460px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Usuário</th>
+                  <th>Nome Completo</th>
+                  <th>Perfil (RBAC)</th>
+                  <th>Status / Lockout</th>
+                  <th>Último Login (IP)</th>
+                  <th>Versão Sessão</th>
+                  <th>Ações Administrativas</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-users">
+                <tr><td colspan="8" class="empty-row">Carregando usuários do banco de dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 2: Security Audit Trail (Admin Only) -->
+    <div id="pane-audit" class="tab-pane">
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <h2>Trilha de Auditoria de Segurança (<code>audit_logs</code>)</h2>
+            <p>Registro imutável de logins, falhas de autenticação, bloqueios e operações críticas realizadas no painel</p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="sel-audit-action" style="width:auto; padding:5px 10px; font-size:12px;">
+              <option value="">Todas as ações</option>
+              <option value="AUTH_LOGIN_OK">Logins com Sucesso (AUTH_LOGIN_OK)</option>
+              <option value="AUTH_LOGIN_FAIL">Falhas de Login (AUTH_LOGIN_FAIL)</option>
+              <option value="AUTH_LOCKOUT">Bloqueios de Conta (AUTH_LOCKOUT)</option>
+              <option value="USER_CREATE">Criação de Usuário (USER_CREATE)</option>
+              <option value="USER_UPDATE">Edição de Usuário (USER_UPDATE)</option>
+              <option value="USER_PASSWORD_CHANGE">Troca de Senha (USER_PASSWORD_CHANGE)</option>
+              <option value="DEVICE_THRESHOLD_UPDATE">Alteração de Faixa Térmica</option>
+              <option value="DEVICE_WIFI_CMD">Comandos Wi-Fi ESP32</option>
+              <option value="OTA_DEPLOY">Deploy de Firmware OTA</option>
+              <option value="EVOLUTION_CONFIG_UPDATE">Alteração Evolution API</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div class="table-wrap" style="max-height: 460px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data / Hora</th>
+                  <th>Usuário</th>
+                  <th>Evento</th>
+                  <th>Endereço IP</th>
+                  <th>Detalhes</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-audit">
+                <tr><td colspan="5" class="empty-row">Carregando trilha de auditoria...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 3: Own Password & Security Profile -->
+    <div id="pane-profile" class="tab-pane">
+      <div class="grid-two">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h2>Alterar Minha Senha</h2>
+              <p>Ao alterar sua senha, o contador <code>session_version</code> é incrementado e todas as outras sessões abertas são encerradas imediatamente</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form id="form-change-own-pass">
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label for="inp-curr-pass">Senha Atual</label>
+                <input type="password" id="inp-curr-pass" required autocomplete="current-password" placeholder="Digite sua senha atual" />
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label for="inp-new-pass">Nova Senha Forte</label>
+                <input type="password" id="inp-new-pass" required minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres (letras + números/símbolos)" />
+              </div>
+              <div class="form-group" style="margin-bottom: 14px;">
+                <label for="inp-conf-pass">Confirmar Nova Senha</label>
+                <input type="password" id="inp-conf-pass" required minlength="8" autocomplete="new-password" placeholder="Repita a nova senha" />
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-save-own-pass">Atualizar Senha e Revogar Outras Sessões</button>
+              <div class="notice" id="notice-own-pass"></div>
+            </form>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h2>Arquitetura de Segurança Ativa</h2>
+              <p>Controles de segurança implementados nesta instância</p>
+            </div>
+            <span class="badge badge-ok">OWASP Compliant</span>
+          </div>
+          <div class="card-body" style="display:flex; flex-direction:column; gap:10px; font-size:13px; color:var(--text-secondary);">
+            <div><strong>1. Senhas no Banco (PBKDF2-HMAC-SHA256):</strong> 600.000 iterações com salt aleatório de 128 bits por usuário e mitigação de timing attack.</div>
+            <div><strong>2. Proteção Anti-CSRF &amp; SameSite:</strong> Cookies de sessão <code>HttpOnly</code> + <code>SameSite=Strict</code> combinados com validação criptográfica do header <code>X-CSRF-Token</code> e <code>Origin</code>.</div>
+            <div><strong>3. Lockout Progressivo &amp; Rate Limiting:</strong> Bloqueio temporário de conta por 15 minutos após 5 falhas consecutivas, aliado ao Rate Limiter por IP no Nginx e no FastAPI.</div>
+            <div><strong>4. Content Security Policy (CSP) Estrita:</strong> Execução exclusiva de scripts de <code>'self'</code> sem inline scripts, mitigando ataques de Cross-Site Scripting (XSS).</div>
+            <div><strong>5. Isolamento de Privilégios no Banco e Containers:</strong> Aplicação opera com usuário PostgreSQL sem <code>SUPERUSER</code> e containers Non-Root com <code>read_only</code> e <code>no-new-privileges</code>.</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal Dialog: Create / Edit User -->
+  <dialog class="modal" id="modal-user">
+    <div class="modal-header">
+      <h3 id="modal-user-title">Novo Usuário</h3>
+      <button type="button" class="btn btn-xs" id="btn-close-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-modal-user">
+        <input type="hidden" id="inp-modal-user-id" value="" />
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="inp-modal-username">Nome de Usuário (Login)</label>
+          <input type="text" id="inp-modal-username" required pattern="^[a-zA-Z0-9_.-]+$" placeholder="Ex: operador_loja" />
+          <span class="help-text">Apenas letras, números, ponto, hífen ou sublinhado (mín. 3 caracteres).</span>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="inp-modal-fullname">Nome Completo / Identificação</label>
+          <input type="text" id="inp-modal-fullname" placeholder="Ex: João Silva (Turno Noite)" />
+        </div>
+        <div class="form-grid" style="margin-bottom: 12px;">
+          <div class="form-group">
+            <label for="sel-modal-role">Perfil de Acesso (RBAC)</label>
+            <select id="sel-modal-role">
+              <option value="operator">Operador (Monitoramento &amp; Faixa)</option>
+              <option value="admin">Administrador (Acesso Total)</option>
+            </select>
+          </div>
+          <div class="form-group" style="justify-content:center;">
+            <label class="checkbox-row" style="margin-top: 22px;">
+              <input type="checkbox" id="chk-modal-active" checked />
+              <span>Conta Ativa</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="inp-modal-password" id="lbl-modal-password">Senha Inicial</label>
+          <input type="password" id="inp-modal-password" minlength="8" placeholder="Mínimo 8 caracteres (letras e números)" />
+          <span class="help-text" id="help-modal-password">Exige ao menos 8 caracteres contendo letras e números/símbolos.</span>
+        </div>
+        <div class="btn-row" style="justify-content: flex-end;">
+          <button type="button" class="btn" id="btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-modal">Salvar Usuário</button>
+        </div>
+        <div class="notice" id="notice-modal-user"></div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/static/js/core.js"></script>
+  <script src="/static/js/admin.js"></script>
+</body>
+</html>

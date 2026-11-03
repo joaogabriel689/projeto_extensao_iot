@@ -16,12 +16,19 @@
 #define MQTT_BROKER_IP    "192.168.1.100"
 #define MQTT_BROKER_PORT  1884
 
-// Deixe vazio ("") se allow_anonymous estiver ativo na rede local
-#define MQTT_USERNAME     ""
-#define MQTT_PASSWORD     ""
+// Deixe vazio ("") apenas em bancada isolada; em produção (VPS), use as credenciais do .env
+#define MQTT_USERNAME     "coutos_mqtt"
+#define MQTT_PASSWORD     "troque_senha_mqtt_segura_2026"
 
 // Identificador único do equipamento monitorado
 #define DEVICE_ID         "camara01"
+
+// Senha WPA2 (mínimo 8 caracteres) para o Ponto de Acesso de configuração (FrioSafe-Config)
+// Também exigida no formulário web local (http://192.168.4.1) para alterar Wi-Fi/MQTT
+#define AP_PORTAL_PASSWORD "coutos2026"
+
+// Em produção real mantenha false para que falha física do sensor DS18B20 não seja mascarada
+#define SIMULATE_SENSOR_IF_DISCONNECTED_DEFAULT false
 
 // Chave secreta compartilhada para validação HMAC-SHA256 de atualizações OTA remotas
 // Deve ser idêntica ao OTA_SHARED_SECRET definido no arquivo .env do servidor

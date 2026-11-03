@@ -212,22 +212,21 @@ class WhatsAppNotifier:
     ) -> str:
         """Formata a mensagem de alerta de temperatura fora da faixa ideal."""
         if alert_type == "TEMP_BELOW_MIN":
-            status_desc = f"❄️ *ABAIXO DA FAIXA IDEAL* (Mínimo: {min_temp_c:.1f} °C)"
+            status_desc = f"*ABAIXO DA FAIXA IDEAL* (Mínimo: {min_temp_c:.1f} °C)"
         else:
-            status_desc = f"🔥 *ACIMA DA FAIXA IDEAL* (Máximo: {max_temp_c:.1f} °C)"
+            status_desc = f"*ACIMA DA FAIXA IDEAL* (Máximo: {max_temp_c:.1f} °C)"
 
         duration_line = ""
         if duration_seconds > 0:
             mins, secs = divmod(int(duration_seconds), 60)
             dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-            duration_line = f"⏱️ *Tempo contínuo fora da faixa:* {dur_str}\n"
+            duration_line = f"⏱*Tempo contínuo fora da faixa:* {dur_str}\n"
 
         return (
-            "🚨 *ALERTA TÉRMICO - COUTOS CONVENIÊNCIA*\n\n"
-            f"📍 *Equipamento:* {device_name} (`{device_id}`)\n"
-            f"⚠️ *Status:* {status_desc}\n"
-            f"🌡️ *Temperatura Atual:* *{temperature_c:.2f} °C*\n"
-            f"🎯 *Faixa Ideal Definida:* {min_temp_c:.1f} °C a {max_temp_c:.1f} °C\n"
+            "*ALERTA TÉRMICO - COUTOS CONVENIÊNCIA*\n\n"
+            f"*Equipamento:* {device_name} (`{device_id}`)\n"
+            f"*Status:* {status_desc}\n"
+            f"*Temperatura Atual:* *{temperature_c:.2f} °C*\n"
             f"{duration_line}\n"
             "Verifique o equipamento imediatamente para evitar perdas no estoque."
         )
@@ -236,10 +235,9 @@ class WhatsAppNotifier:
     def format_lwt_offline_alert(device_name: str, device_id: str) -> str:
         """Formata o alerta de queda de energia/conexão detectado via LWT do MQTT."""
         return (
-            "⚡ *ALERTA DE QUEDA DE CONEXÃO / ENERGIA (LWT)*\n\n"
-            f"📍 *Equipamento:* {device_name} (`{device_id}`)\n"
-            "🔴 *Status:* *OFFLINE (Desconexão Abrupta Detectada)*\n\n"
-            "O microcontrolador ESP32 parou de responder ao Broker MQTT (Last Will and Testament). "
+            "*ALERTA DE QUEDA DE CONEXÃO / ENERGIA (LWT)*\n\n"
+            f"*Equipamento:* {device_name} (`{device_id}`)\n"
+            "*Status:* *OFFLINE (Desconexão Abrupta Detectada)*\n\n"
             "Pode haver queda de energia elétrica na câmara fria/freezer ou falha na rede local."
         )
 
@@ -253,10 +251,10 @@ class WhatsAppNotifier:
     ) -> str:
         """Formata mensagem informando que a temperatura voltou para a faixa ideal."""
         return (
-            "✅ *TEMPERATURA NORMALIZADA - COUTOS CONVENIÊNCIA*\n\n"
-            f"📍 *Equipamento:* {device_name} (`{device_id}`)\n"
-            f"🌡️ *Temperatura Atual:* *{temperature_c:.2f} °C*\n"
-            f"🎯 *Faixa Ideal:* {min_temp_c:.1f} °C a {max_temp_c:.1f} °C\n\n"
+            "*TEMPERATURA NORMALIZADA - COUTOS CONVENIÊNCIA*\n\n"
+            f"*Equipamento:* {device_name} (`{device_id}`)\n"
+            f"*Temperatura Atual:* *{temperature_c:.2f} °C*\n"
+            f"*Faixa Ideal:* {min_temp_c:.1f} °C a {max_temp_c:.1f} °C\n\n"
             "O equipamento retornou à margem de operação segura."
         )
 

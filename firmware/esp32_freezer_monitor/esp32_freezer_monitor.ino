@@ -33,10 +33,18 @@
 #endif
 
 #ifndef OTA_SHARED_SECRET
-  #define OTA_SHARED_SECRET "friosafe_ota_hmac_secret_2026"
+  #define OTA_SHARED_SECRET "coutos_ota_hmac_secret_2026"
 #endif
 
-const char* FIRMWARE_VERSION = "1.2.1";
+#ifndef AP_PORTAL_PASSWORD
+  #define AP_PORTAL_PASSWORD "coutos2026"
+#endif
+
+#ifndef SIMULATE_SENSOR_IF_DISCONNECTED_DEFAULT
+  #define SIMULATE_SENSOR_IF_DISCONNECTED_DEFAULT false
+#endif
+
+const char* FIRMWARE_VERSION = "1.2.2";
 
 // ------------------------------------------------------------------------------
 // 1. PINAGEM DO HARDWARE (ESP32 DevKit v1)
@@ -45,8 +53,8 @@ const int PIN_ONEWIRE_DS18B20 = 4;   // GPIO 4 (D4): Barramento de dados do DS18
 const int PIN_STATUS_LED      = 2;   // GPIO 2: LED onboard
 const int PIN_BOOT_BUTTON     = 0;   // GPIO 0: Botão BOOT (segurar 2s abre Portal Wi-Fi)
 
-// Mantém fallback de bancada caso o sensor físico não responda no ciclo
-const bool SIMULATE_SENSOR_IF_DISCONNECTED = true;
+// Em produção real deve ser false para nunca mascarar rompimento físico da sonda DS18B20
+const bool SIMULATE_SENSOR_IF_DISCONNECTED = SIMULATE_SENSOR_IF_DISCONNECTED_DEFAULT;
 
 // ------------------------------------------------------------------------------
 // 2. PARÂMETROS OPERACIONAIS E CONFIGURAÇÃO PERSISTENTE (NVS)
@@ -323,23 +331,40 @@ bool readDS18B20Native(int pin, float &outTempC, bool recordDebug = false) {
 // ------------------------------------------------------------------------------
 void loadConfigurationFromNVS() {
   preferences.begin("friosafe_cfg", true);
-  cfgWifiSsid = preferences.getString("wifi_ssid", WIFI_SSID);
-  cfgWifiPass = preferences.getString("wifi_pass", WIFI_PASSWORD);
-  cfgMqttHost = preferences.getString("mqtt_host", MQTT_BROKER_IP);
-  cfgMqttPort = preferences.getInt("mqtt_port", MQTT_BROKER_PORT);
-  cfgMqttUser = preferences.getString("mqtt_user", MQTT_USERNAME);
-  cfgMqttPass = preferences.getString("mqtt_pass", MQTT_PASSWORD);
-  cfgDeviceId = preferences.getString("device_id", DEVICE_ID);
+  bool hasFrioSafe = preferences.isKey("wifi_ssid");
+  cfgWifiSsid = preferences.getString("wifi_ssid", "");
+  cfgWifiPass = preferences.getString("wifi_pass", "");
+  cfgMqttHost = preferences.getString("mqtt_host", "");
+  cfgMqttPort = preferences.getInt("mqtt_port", 0);
+  cfgMqttUser = preferences.getString("mqtt_user", "");
+  cfgMqttPass = preferences.getString("mqtt_pass", "");
+  cfgDeviceId = preferences.getString("device_id", "");
   minTempC    = preferences.getFloat("min_temp", -10.0f);
   maxTempC    = preferences.getFloat("max_temp", 5.0f);
   int telSec  = preferences.getInt("tel_int_s", 10);
   preferences.end();
+
+  // Migração transparente do namespace legado "coutos_cfg" (v1.2.0)
+  if (!hasFrioSafe || cfgWifiSsid.length() == 0) {
+    preferences.begin("coutos_cfg", true);
+    if (cfgWifiSsid.length() == 0) cfgWifiSsid = preferences.getString("wifi_ssid", WIFI_SSID);
+    if (cfgWifiPass.length() == 0) cfgWifiPass = preferences.getString("wifi_pass", WIFI_PASSWORD);
+    if (cfgDeviceId.length() == 0) cfgDeviceId = preferences.getString("device_id", DEVICE_ID);
+    preferences.end();
+  }
+
+  if (cfgWifiSsid.length() == 0) cfgWifiSsid = WIFI_SSID;
+  if (cfgWifiPass.length() == 0) cfgWifiPass = WIFI_PASSWORD;
+  if (cfgMqttHost.length() == 0) cfgMqttHost = MQTT_BROKER_IP;
+  if (cfgMqttPort <= 0)          cfgMqttPort = MQTT_BROKER_PORT;
 
   if (telSec < 2) telSec = 2;
   if (telSec > 3600) telSec = 3600;
   telemetryIntervalMs = (unsigned long)telSec * 1000UL;
 
   if (cfgDeviceId.length() == 0) cfgDeviceId = DEVICE_ID;
+  if (cfgMqttUser.length() == 0) cfgMqttUser = MQTT_USERNAME;
+  if (cfgMqttPass.length() == 0) cfgMqttPass = MQTT_PASSWORD;
   if (cfgMqttPort <= 0 || cfgMqttPort > 65535) cfgMqttPort = MQTT_BROKER_PORT;
   rebuildMqttTopics();
 
@@ -410,7 +435,12 @@ void startCaptivePortalAP() {
   IPAddress apIP(192, 168, 4, 1);
   IPAddress netMsk(255, 255, 255, 0);
   WiFi.softAPConfig(apIP, apIP, netMsk);
-  WiFi.softAP(AP_SSID_PREFIX); // Rede aberta para facilitar configuração rápida em campo
+  // Rede WPA2-PSK protegida (mínimo 8 caracteres)
+  if (strlen(AP_PORTAL_PASSWORD) >= 8) {
+    WiFi.softAP(AP_SSID_PREFIX, AP_PORTAL_PASSWORD);
+  } else {
+    WiFi.softAP(AP_SSID_PREFIX, "coutos2026");
+  }
 
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(DNS_PORT, "*", apIP);
@@ -419,8 +449,8 @@ void startCaptivePortalAP() {
   apPortalStartedAt = millis();
 
   Serial.println("\n*******************************************************");
-  Serial.printf("[PORTAL AP] Rede Wi-Fi de Configuracao ATIVA: '%s'\n", AP_SSID_PREFIX);
-  Serial.printf("[PORTAL AP] Conecte no Wi-Fi '%s' e acesse: http://192.168.4.1\n", AP_SSID_PREFIX);
+  Serial.printf("[PORTAL AP] Rede Wi-Fi WPA2 ATIVA: '%s'\n", AP_SSID_PREFIX);
+  Serial.println("[PORTAL AP] Conecte no Wi-Fi e acesse: http://192.168.4.1");
   Serial.println("*******************************************************\n");
 
   // Pisca LED 4 vezes rápidas para indicar que o modo AP entrou em operação
@@ -549,6 +579,9 @@ void handleWebRoot() {
         </div>
       </div>
 
+      <label for="adm">Senha Administrativa do Dispositivo</label>
+      <input type="password" id="adm" name="admin_pass" required placeholder="Senha WPA2 do AP ou OTA Secret">
+
       <button type="submit" class="btn btn-p">Salvar e Conectar</button>
     </form>
 
@@ -564,17 +597,47 @@ async function scanNetworks(){
   btn.textContent='Buscando...';
   btn.disabled=true;
   box.style.display='block';
-  box.innerHTML='<div class="net-item">Escaneando redes Wi-Fi 2.4 GHz...</div>';
+  box.textContent='';
+  const loading=document.createElement('div');
+  loading.className='net-item';
+  loading.textContent='Escaneando redes Wi-Fi 2.4 GHz...';
+  box.appendChild(loading);
   try{
     const r=await fetch('/scan');
     const nets=await r.json();
+    box.textContent='';
     if(!nets.length){
-      box.innerHTML='<div class="net-item">Nenhuma rede encontrada.</div>';
+      const empty=document.createElement('div');
+      empty.className='net-item';
+      empty.textContent='Nenhuma rede encontrada.';
+      box.appendChild(empty);
     }else{
-      box.innerHTML=nets.map(n=>`<div class="net-item" onclick="document.getElementById('ssid').value='${n.ssid.replace(/'/g,"\\'")}';document.getElementById('pass').focus()"><span><strong>${n.ssid}</strong> ${n.open?'(Aberta)':'🔒'}</span><span style="color:#64748b">${n.rssi} dBm</span></div>`).join('');
+      nets.forEach(n=>{
+        const row=document.createElement('div');
+        row.className='net-item';
+        row.addEventListener('click',()=>{
+          document.getElementById('ssid').value=n.ssid||'';
+          document.getElementById('pass').focus();
+        });
+        const left=document.createElement('span');
+        const strong=document.createElement('strong');
+        strong.textContent=n.ssid||'';
+        left.appendChild(strong);
+        left.appendChild(document.createTextNode(n.open?' (Aberta)':' 🔒'));
+        const right=document.createElement('span');
+        right.style.color='#64748b';
+        right.textContent=(n.rssi||0)+' dBm';
+        row.appendChild(left);
+        row.appendChild(right);
+        box.appendChild(row);
+      });
     }
   }catch(e){
-    box.innerHTML='<div class="net-item">Erro ao buscar redes.</div>';
+    box.textContent='';
+    const err=document.createElement('div');
+    err.className='net-item';
+    err.textContent='Erro ao buscar redes.';
+    box.appendChild(err);
   }
   btn.textContent='Buscar Redes';
   btn.disabled=false;
@@ -583,6 +646,8 @@ async function scanNetworks(){
 </body>
 </html>)rawliteral";
 
+  webServer.sendHeader("X-Frame-Options", "DENY");
+  webServer.sendHeader("X-Content-Type-Options", "nosniff");
   webServer.send(200, "text/html; charset=utf-8", page);
 }
 
@@ -592,13 +657,14 @@ void handleWebScan() {
   for (int i = 0; i < n; i++) {
     if (i > 0) json += ",";
     String ssid = WiFi.SSID(i);
+    ssid.replace("\\", "\\\\");
     ssid.replace("\"", "\\\"");
     bool open = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
     json += "{\"ssid\":\"" + ssid + "\",\"rssi\":" + String(WiFi.RSSI(i)) + ",\"open\":" + (open ? "true" : "false") + "}";
   }
   json += "]";
   WiFi.scanDelete();
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.sendHeader("X-Content-Type-Options", "nosniff");
   webServer.send(200, "application/json", json);
 }
 
@@ -618,11 +684,18 @@ void handleWebStatusJson() {
   json += "\"mqtt_connected\":" + String(mqttClient.connected() ? "true" : "false") + ",";
   json += "\"temperature_c\":" + (isnan(lastReadTempC) ? "null" : String(lastReadTempC, 2));
   json += "}";
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.sendHeader("X-Content-Type-Options", "nosniff");
   webServer.send(200, "application/json", json);
 }
 
 void handleWebSave() {
+  String admPass = webServer.arg("admin_pass");
+  admPass.trim();
+  if (admPass != String(AP_PORTAL_PASSWORD) && admPass != cfgOtaSecret) {
+    webServer.send(403, "text/plain; charset=utf-8", "Nao autorizado: Senha administrativa incorreta.");
+    return;
+  }
+
   String newSsid = webServer.arg("wifi_ssid");
   String newPass = webServer.arg("wifi_pass");
   String newHost = webServer.arg("mqtt_host");
@@ -644,7 +717,8 @@ void handleWebSave() {
 
   String resp = R"rawliteral(<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="6;url=/"><title>Configuração Salva</title><style>body{font-family:sans-serif;background:#f8fafc;color:#0f172a;padding:24px;text-align:center}.box{max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:24px}</style></head><body><div class="box"><h2 style="font-size:16px;margin-bottom:8px">Configuração salva na memória Flash!</h2><p style="font-size:13px;color:#475569">O ESP32 está reiniciando e conectando à rede <strong>)rawliteral" + htmlEscape(newSsid) + R"rawliteral(</strong>...</p></div></body></html>)rawliteral";
 
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.sendHeader("X-Frame-Options", "DENY");
+  webServer.sendHeader("X-Content-Type-Options", "nosniff");
   webServer.send(200, "text/html; charset=utf-8", resp);
 
   pendingReboot = true;
@@ -955,16 +1029,22 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       startCaptivePortalAP();
     }
 
-    // 3. Atualização remota de credenciais Wi-Fi via MQTT (opcional pela interface web)
+    // 3. Atualização remota de credenciais Wi-Fi e/ou Broker MQTT via MQTT
     String newSsid = "";
     String newPass = "";
-    if (extractJsonString(message, "wifi_ssid", newSsid) && newSsid.length() > 0) {
-      extractJsonString(message, "wifi_pass", newPass);
-      String newHost = cfgMqttHost;
-      extractJsonString(message, "mqtt_host", newHost);
+    String newHost = "";
+    bool hasSsid = extractJsonString(message, "wifi_ssid", newSsid) && newSsid.length() > 0;
+    bool hasHost = extractJsonString(message, "mqtt_host", newHost) && newHost.length() > 0;
+    if (hasSsid || hasHost) {
+      String finalSsid = hasSsid ? newSsid : cfgWifiSsid;
+      String finalPass = cfgWifiPass;
+      if (extractJsonString(message, "wifi_pass", newPass) && newPass.length() > 0) {
+        finalPass = newPass;
+      }
+      String finalHost = hasHost ? newHost : cfgMqttHost;
       float portFloat = cfgMqttPort;
       extractJsonFloat(message, "mqtt_port", portFloat);
-      saveConfigurationToNVS(newSsid, newPass, newHost, (int)portFloat, cfgDeviceId);
+      saveConfigurationToNVS(finalSsid, finalPass, finalHost, (int)portFloat, cfgDeviceId);
       pendingReboot = true;
       rebootScheduledAt = millis() + 1000;
     }

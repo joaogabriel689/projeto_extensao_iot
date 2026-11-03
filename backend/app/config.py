@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     alert_delay_seconds: int = 180
     alert_cooldown_seconds: int = 300
     default_telemetry_interval_seconds: int = 10
+    default_quiet_hours_enabled: bool = False
+    default_quiet_hours_start: str = "23:00"
+    default_quiet_hours_end: str = "07:00"
 
     # Broker MQTT
     mqtt_broker_host: str = "mosquitto"
@@ -22,6 +25,7 @@ class Settings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     mqtt_topic_prefix: str = "loja/freezer"
+    mqtt_auto_register_unknown_devices: bool = False
 
     # Banco de Dados PostgreSQL (Admin Bootstrap + Usuário Dedicado da Aplicação)
     postgres_user: str = "coutos_admin"
@@ -45,6 +49,12 @@ class Settings(BaseSettings):
     backend_ota_port: int = 8000
     dashboard_username: str = "admin"
     dashboard_password: str = "coutos_painel_2026"
+    cookie_secure: bool = False
+    session_ttl_seconds: int = 43200  # 12 horas
+    max_failed_login_attempts: int = 5
+    account_lockout_seconds: int = 900  # 15 minutos
+    cors_allowed_origins: str = ""
+    enable_swagger_docs: bool = False
 
     # Evolution API (WhatsApp)
     evolution_api_url: str = "http://evolution_api:8080"

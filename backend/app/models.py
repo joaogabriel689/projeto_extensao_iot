@@ -25,6 +25,11 @@ class DeviceConfig(Base):
     merchant_phone = Column(String(32), nullable=True)
     notifications_enabled = Column(Boolean, nullable=False, default=True)
 
+    # Modo Sem Alertas / Desligamento Noturno Programado (Janela de Silêncio)
+    quiet_hours_enabled = Column(Boolean, nullable=False, default=False)
+    quiet_hours_start = Column(String(8), nullable=False, default="23:00")
+    quiet_hours_end = Column(String(8), nullable=False, default="07:00")
+
     # Estado operacional atual (atualizado via MQTT / LWT)
     online_status = Column(String(16), nullable=False, default="unknown")
     last_temp_c = Column(Float, nullable=True)
@@ -80,3 +85,38 @@ class SystemSettings(Base):
     whatsapp_notifications_enabled = Column(Boolean, nullable=False, default=True)
     replay_interval_seconds = Column(Integer, nullable=False, default=10)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class User(Base):
+    """Usuários do Painel Web armazenados no PostgreSQL com hash PBKDF2-HMAC-SHA256, RBAC e Lockout."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    full_name = Column(String(128), nullable=True)
+    password_hash = Column(String(256), nullable=False)
+    role = Column(String(32), nullable=False, default="admin")  # "admin" ou "operator"
+    is_active = Column(Boolean, nullable=False, default=True)
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    session_version = Column(Integer, nullable=False, default=1)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_ip = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class AuditLog(Base):
+    """Trilha de auditoria de eventos de segurança, logins e alterações administrativas."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), nullable=False, index=True)
+    action = Column(String(64), nullable=False, index=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(256), nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, index=True)
+

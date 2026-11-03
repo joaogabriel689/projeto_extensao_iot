@@ -3,9 +3,12 @@
 from datetime import datetime, timezone
 import json
 import logging
+import math
+import re
 import threading
 from typing import Any, Dict
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import paho.mqtt.client as mqtt
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,6 +21,9 @@ from app.notifier import whatsapp_notifier
 from app.ota_manager import ota_manager
 
 logger = logging.getLogger(__name__)
+
+_VALID_DEVICE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+MAX_MQTT_PAYLOAD_BYTES = 4096
 
 
 class MQTTTelemetryService:
@@ -142,12 +148,56 @@ class MQTTTelemetryService:
             "in_door_open_delay": bool(mem.get("in_door_open_delay", False)),
         }
 
-    def _get_or_create_device_config(self, device_id: str) -> Dict[str, Any]:
+    @staticmethod
+    def is_in_quiet_hours(cfg: Dict[str, Any], now_utc: datetime | None = None) -> bool:
+        """Verifica se o dispositivo está dentro da janela 'Modo Sem Alertas' (desligamento noturno)."""
+        if not cfg.get("quiet_hours_enabled", False):
+            return False
+
+        start_str = str(cfg.get("quiet_hours_start") or settings.default_quiet_hours_start or "23:00").strip()
+        end_str = str(cfg.get("quiet_hours_end") or settings.default_quiet_hours_end or "07:00").strip()
+        try:
+            sh, sm = (int(x) for x in start_str.split(":")[:2])
+            eh, em = (int(x) for x in end_str.split(":")[:2])
+            start_min = sh * 60 + sm
+            end_min = eh * 60 + em
+        except (ValueError, TypeError):
+            return False
+
+        if start_min == end_min:
+            return True
+
+        dt_utc = now_utc or datetime.now(timezone.utc)
+        if dt_utc.tzinfo is None:
+            dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+        try:
+            local_tz = ZoneInfo(settings.tz)
+            dt_local = dt_utc.astimezone(local_tz)
+        except (ZoneInfoNotFoundError, Exception):
+            dt_local = dt_utc
+
+        cur_min = dt_local.hour * 60 + dt_local.minute
+        if start_min < end_min:
+            # Janela no mesmo dia (ex: 01:00 às 06:00)
+            return start_min <= cur_min < end_min
+        # Janela que cruza a meia-noite (ex: 23:00 às 07:00)
+        return cur_min >= start_min or cur_min < end_min
+
+    def _get_or_create_device_config(self, device_id: str) -> Dict[str, Any] | None:
         """Obtém a configuração do dispositivo no PostgreSQL ou no cache SQLite local."""
         db = SessionLocal()
         try:
             device = db.query(DeviceConfig).filter(DeviceConfig.device_id == device_id).first()
             if not device:
+                if (
+                    device_id != settings.default_device_id
+                    and not settings.mqtt_auto_register_unknown_devices
+                ):
+                    logger.warning(
+                        "[SEGURANÇA MQTT] Dispositivo desconhecido '%s' ignorado (MQTT_AUTO_REGISTER_UNKNOWN_DEVICES=false).",
+                        device_id,
+                    )
+                    return None
                 device = DeviceConfig(
                     device_id=device_id,
                     name=settings.default_device_name
@@ -160,6 +210,9 @@ class MQTTTelemetryService:
                     telemetry_interval_seconds=settings.default_telemetry_interval_seconds,
                     merchant_phone=settings.merchant_whatsapp_number,
                     notifications_enabled=settings.whatsapp_notifications_enabled,
+                    quiet_hours_enabled=settings.default_quiet_hours_enabled,
+                    quiet_hours_start=settings.default_quiet_hours_start,
+                    quiet_hours_end=settings.default_quiet_hours_end,
                     online_status="online",
                 )
                 db.add(device)
@@ -184,6 +237,9 @@ class MQTTTelemetryService:
                 ),
                 "merchant_phone": device.merchant_phone or settings.merchant_whatsapp_number,
                 "notifications_enabled": bool(device.notifications_enabled),
+                "quiet_hours_enabled": bool(getattr(device, "quiet_hours_enabled", False)),
+                "quiet_hours_start": getattr(device, "quiet_hours_start", None) or settings.default_quiet_hours_start,
+                "quiet_hours_end": getattr(device, "quiet_hours_end", None) or settings.default_quiet_hours_end,
                 "out_of_range_since": device.out_of_range_since,
                 "in_alert_state": bool(device.in_alert_state),
                 "last_alert_at": device.last_alert_at,
@@ -200,6 +256,11 @@ class MQTTTelemetryService:
                 cached["in_alert_state"] = mem.get("in_alert_state", False)
                 cached["last_alert_at"] = mem.get("last_alert_at")
                 return cached
+            if (
+                device_id != settings.default_device_id
+                and not settings.mqtt_auto_register_unknown_devices
+            ):
+                return None
             return {
                 "device_id": device_id,
                 "name": settings.default_device_name,
@@ -210,6 +271,9 @@ class MQTTTelemetryService:
                 "telemetry_interval_seconds": settings.default_telemetry_interval_seconds,
                 "merchant_phone": settings.merchant_whatsapp_number,
                 "notifications_enabled": settings.whatsapp_notifications_enabled,
+                "quiet_hours_enabled": settings.default_quiet_hours_enabled,
+                "quiet_hours_start": settings.default_quiet_hours_start,
+                "quiet_hours_end": settings.default_quiet_hours_end,
                 "out_of_range_since": self._memory_state.get(device_id, {}).get("out_of_range_since"),
                 "in_alert_state": self._memory_state.get(device_id, {}).get("in_alert_state", False),
                 "last_alert_at": self._memory_state.get(device_id, {}).get("last_alert_at"),
@@ -220,13 +284,25 @@ class MQTTTelemetryService:
     def _on_message(self, client, userdata, msg: mqtt.MQTTMessage) -> None:
         """Roteia mensagens recebidas conforme a estrutura loja/freezer/<id>/<campo>."""
         try:
+            if len(msg.payload) > MAX_MQTT_PAYLOAD_BYTES:
+                logger.warning(
+                    "[SEGURANÇA MQTT] Payload descartado por exceder %d bytes no tópico %s",
+                    MAX_MQTT_PAYLOAD_BYTES,
+                    msg.topic,
+                )
+                return
+
             topic = msg.topic
             raw_payload = msg.payload.decode("utf-8", errors="replace").strip()
             parts = topic.split("/")
             if len(parts) < 4:
                 return
 
-            device_id = parts[2]
+            device_id = parts[2].strip()
+            if not _VALID_DEVICE_ID_RE.match(device_id):
+                logger.warning("[SEGURANÇA MQTT] device_id inválido descartado: %r", device_id)
+                return
+
             field_path = "/".join(parts[3:])
 
             if field_path == "telemetry":
@@ -240,6 +316,10 @@ class MQTTTelemetryService:
 
     def _handle_telemetry(self, device_id: str, raw_payload: str) -> None:
         """Processa leitura de temperatura do ESP32, avalia faixa ideal e persiste."""
+        cfg = self._get_or_create_device_config(device_id)
+        if not cfg:
+            return
+
         now = datetime.now(timezone.utc)
         event_id = None
 
@@ -249,18 +329,20 @@ class MQTTTelemetryService:
                 temperature_c = float(data)
             else:
                 temperature_c = float(data.get("temperature_c", data.get("temp", data.get("temperature"))))
-                event_id = data.get("event_id")
+                raw_ev = data.get("event_id")
+                if raw_ev:
+                    event_id = str(raw_ev).strip()[:128]
                 mem = self._memory_state.setdefault(device_id, {})
-                if "wifi_ssid" in data:
-                    mem["wifi_ssid"] = data.get("wifi_ssid")
-                if "wifi_ip" in data:
-                    mem["wifi_ip"] = data.get("wifi_ip")
-                if "wifi_rssi" in data:
-                    mem["wifi_rssi"] = data.get("wifi_rssi")
+                if "wifi_ssid" in data and data.get("wifi_ssid") is not None:
+                    mem["wifi_ssid"] = str(data.get("wifi_ssid"))[:64]
+                if "wifi_ip" in data and data.get("wifi_ip") is not None:
+                    mem["wifi_ip"] = str(data.get("wifi_ip"))[:45]
+                if "wifi_rssi" in data and data.get("wifi_rssi") is not None:
+                    mem["wifi_rssi"] = int(data.get("wifi_rssi"))
                 if "ap_active" in data:
                     mem["ap_active"] = bool(data.get("ap_active"))
-                if "fw_version" in data:
-                    mem["fw_version"] = str(data.get("fw_version"))
+                if "fw_version" in data and data.get("fw_version") is not None:
+                    mem["fw_version"] = str(data.get("fw_version"))[:32]
                 if data.get("timestamp"):
                     try:
                         parsed_dt = datetime.fromisoformat(str(data["timestamp"]))
@@ -270,10 +352,16 @@ class MQTTTelemetryService:
         except (json.JSONDecodeError, TypeError, ValueError):
             temperature_c = float(raw_payload)
 
+        if not math.isfinite(temperature_c) or temperature_c < -100.0 or temperature_c > 150.0:
+            logger.warning(
+                "[SEGURANÇA MQTT] Leitura térmica fora dos limites físicos (%.2f°C) ignorada para %s.",
+                temperature_c,
+                device_id,
+            )
+            return
+
         if not event_id:
             event_id = f"{device_id}_{int(now.timestamp() * 1000)}_{uuid.uuid4().hex[:6]}"
-
-        cfg = self._get_or_create_device_config(device_id)
         min_temp = cfg["min_temp_c"]
         max_temp = cfg["max_temp_c"]
 
@@ -342,6 +430,22 @@ class MQTTTelemetryService:
         """Verifica filtro de porta aberta/reposição (alert_delay_seconds), disparo de alerta e normalização."""
         device_id = cfg["device_id"]
         mem = self._memory_state.setdefault(device_id, {})
+
+        # Modo Sem Alertas (Desligamento Noturno Programado)
+        if self.is_in_quiet_hours(cfg, now):
+            mem["out_of_range_since"] = None
+            mem["out_of_range_elapsed_s"] = 0
+            mem["in_door_open_delay"] = False
+            if is_below or is_above:
+                logger.info(
+                    "[MODO SEM ALERTAS] Device=%s | Temp=%.2f°C fora da faixa, porém dentro do horário silencioso (%s às %s). Alerta suprimido.",
+                    device_id,
+                    temperature_c,
+                    cfg.get("quiet_hours_start"),
+                    cfg.get("quiet_hours_end"),
+                )
+            return
+
         in_alert = mem.get("in_alert_state", cfg.get("in_alert_state", False))
         last_alert_at: datetime | None = mem.get("last_alert_at") or cfg.get("last_alert_at")
         out_since: datetime | None = mem.get("out_of_range_since") or cfg.get("out_of_range_since")
@@ -457,12 +561,36 @@ class MQTTTelemetryService:
     def _handle_status_lwt(self, device_id: str, status_payload: str) -> None:
         """Processa mensagens de presença ('online' ou 'offline' via Last Will and Testament)."""
         status_clean = status_payload.lower().strip()
+        if status_clean not in ("online", "offline"):
+            return
         now = datetime.now(timezone.utc)
         cfg = self._get_or_create_device_config(device_id)
+        if not cfg:
+            return
 
         logger.info("[MQTT STATUS / LWT] Device=%s | Novo Status=%s", device_id, status_clean)
 
         if status_clean == "offline":
+            if self.is_in_quiet_hours(cfg, now):
+                logger.info(
+                    "[MODO SEM ALERTAS] Device=%s ficou offline durante o horário silencioso (%s às %s). Alerta LWT suprimido.",
+                    device_id,
+                    cfg.get("quiet_hours_start"),
+                    cfg.get("quiet_hours_end"),
+                )
+                db = SessionLocal()
+                try:
+                    device = db.query(DeviceConfig).filter(DeviceConfig.device_id == device_id).first()
+                    if device:
+                        device.online_status = "offline"
+                        db.commit()
+                except Exception as exc:
+                    db.rollback()
+                    logger.warning("[MQTT] Não foi possível atualizar status offline no DB: %s", exc)
+                finally:
+                    db.close()
+                return
+
             msg_text = whatsapp_notifier.format_lwt_offline_alert(
                 device_name=cfg["name"],
                 device_id=device_id,

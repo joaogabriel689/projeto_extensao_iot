@@ -3,503 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Coutos Conveniência — Monitoramento Térmico</title>
-  <style>
-    :root {
-      --bg-page: #f6f7f9;
-      --bg-surface: #ffffff;
-      --bg-subtle: #f8fafc;
-      --border: #e2e8f0;
-      --border-strong: #cbd5e1;
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #64748b;
-      --accent: #1e293b;
-      --accent-hover: #0f172a;
-      --blue: #2563eb;
-      --green-bg: #f0fdf4;
-      --green-border: #bbf7d0;
-      --green-text: #166534;
-      --green-dot: #16a34a;
-      --red-bg: #fef2f2;
-      --red-border: #fecaca;
-      --red-text: #991b1b;
-      --red-dot: #dc2626;
-      --amber-bg: #fffbeb;
-      --amber-border: #fde68a;
-      --amber-text: #92400e;
-      --amber-dot: #d97706;
-      --radius: 6px;
-      --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background-color: var(--bg-page);
-      color: var(--text-primary);
-      line-height: 1.5;
-      font-size: 14px;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    .tabular {
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Top Header */
-    header.topbar {
-      background: var(--bg-surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 24px;
-      position: sticky;
-      top: 0;
-      z-index: 20;
-    }
-
-    .topbar-inner {
-      max-width: 1280px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .brand {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-    }
-
-    .brand h1 {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-primary);
-      letter-spacing: -0.01em;
-    }
-
-    .brand span.subtitle {
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-
-    .topbar-status {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .status-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
-      background: var(--bg-subtle);
-      border: 1px solid var(--border);
-      padding: 4px 10px;
-      border-radius: var(--radius);
-    }
-
-    .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--text-muted);
-      display: inline-block;
-    }
-
-    .dot.ok { background: var(--green-dot); }
-    .dot.err { background: var(--red-dot); }
-    .dot.warn { background: var(--amber-dot); }
-
-    /* Container */
-    main.container {
-      max-width: 1280px;
-      margin: 20px auto 48px;
-      padding: 0 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    /* Cards */
-    .card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .card-header {
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .card-header h2 {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .card-header p {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .card-body {
-      padding: 18px;
-    }
-
-    /* KPI Strip */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-
-    .kpi-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 16px 18px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .kpi-label {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .kpi-value {
-      font-size: 28px;
-      font-weight: 600;
-      color: var(--text-primary);
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-    }
-
-    .kpi-value.small {
-      font-size: 20px;
-    }
-
-    .kpi-meta {
-      font-size: 12px;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    /* Badges */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 2px 8px;
-      border-radius: 4px;
-      border: 1px solid transparent;
-      white-space: nowrap;
-    }
-
-    .badge-ok {
-      background: var(--green-bg);
-      border-color: var(--green-border);
-      color: var(--green-text);
-    }
-
-    .badge-danger {
-      background: var(--red-bg);
-      border-color: var(--red-border);
-      color: var(--red-text);
-    }
-
-    .badge-warn {
-      background: var(--amber-bg);
-      border-color: var(--amber-border);
-      color: var(--amber-text);
-    }
-
-    .badge-neutral {
-      background: var(--bg-subtle);
-      border-color: var(--border);
-      color: var(--text-secondary);
-    }
-
-    /* Two-column layouts */
-    .grid-main {
-      display: grid;
-      grid-template-columns: 1.6fr 1fr;
-      gap: 20px;
-    }
-
-    .grid-two {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    /* Forms */
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .form-group.full {
-      grid-column: 1 / -1;
-    }
-
-    label {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-secondary);
-    }
-
-    input[type="text"],
-    input[type="number"],
-    input[type="password"],
-    input[type="url"] {
-      width: 100%;
-      padding: 8px 10px;
-      font-size: 13px;
-      color: var(--text-primary);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--radius);
-      outline: none;
-      transition: border-color 0.15s ease;
-    }
-
-    input:focus {
-      border-color: var(--blue);
-    }
-
-    .help-text {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .checkbox-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 4px;
-      cursor: pointer;
-    }
-
-    .checkbox-row input[type="checkbox"] {
-      width: 15px;
-      height: 15px;
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-
-    /* Buttons */
-    .btn-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-
-    button.btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 14px;
-      font-size: 13px;
-      font-weight: 500;
-      border-radius: var(--radius);
-      border: 1px solid var(--border-strong);
-      background: var(--bg-surface);
-      color: var(--text-primary);
-      cursor: pointer;
-      transition: background-color 0.12s ease, border-color 0.12s ease;
-    }
-
-    button.btn:hover:not(:disabled) {
-      background: var(--bg-subtle);
-    }
-
-    button.btn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-
-    button.btn-primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #ffffff;
-    }
-
-    button.btn-primary:hover:not(:disabled) {
-      background: var(--accent-hover);
-    }
-
-    button.btn-sm {
-      padding: 5px 10px;
-      font-size: 12px;
-    }
-
-    button.btn-danger {
-      color: var(--red-text);
-      border-color: var(--red-border);
-      background: var(--red-bg);
-    }
-
-    /* Feedback banner */
-    .notice {
-      font-size: 12px;
-      padding: 8px 12px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--bg-subtle);
-      color: var(--text-secondary);
-      margin-top: 12px;
-      display: none;
-    }
-
-    .notice.show { display: block; }
-    .notice.ok { background: var(--green-bg); border-color: var(--green-border); color: var(--green-text); }
-    .notice.err { background: var(--red-bg); border-color: var(--red-border); color: var(--red-text); }
-
-    /* Chart Area */
-    .chart-box {
-      width: 100%;
-      height: 235px;
-      position: relative;
-    }
-
-    svg.temp-chart {
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
-    /* QR Code Panel */
-    .qr-panel {
-      background: var(--bg-subtle);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      min-height: 240px;
-      gap: 10px;
-    }
-
-    .qr-panel img {
-      width: 190px;
-      height: 190px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: #fff;
-      padding: 6px;
-    }
-
-    /* Tables */
-    .table-wrap {
-      overflow-x: auto;
-      max-height: 340px;
-      overflow-y: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      text-align: left;
-    }
-
-    th {
-      position: sticky;
-      top: 0;
-      background: var(--bg-subtle);
-      color: var(--text-secondary);
-      font-weight: 500;
-      font-size: 12px;
-      padding: 9px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    td {
-      padding: 9px 14px;
-      border-bottom: 1px solid var(--border);
-      color: var(--text-primary);
-      vertical-align: middle;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tr:hover td {
-      background: #fcfcfd;
-    }
-
-    .empty-row {
-      text-align: center;
-      color: var(--text-muted);
-      padding: 24px !important;
-    }
-
-    @media (max-width: 1024px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-      .grid-main, .grid-two { grid-template-columns: 1fr; }
-    }
-
-    @media (max-width: 600px) {
-      .kpi-grid { grid-template-columns: 1fr; }
-      .form-grid { grid-template-columns: 1fr; }
-      header.topbar, main.container { padding-left: 14px; padding-right: 14px; }
-    }
-  </style>
+  <title>Painel Operacional — Coutos Conveniência</title>
+  <link rel="stylesheet" href="/static/css/framework.css" />
 </head>
 <body>
 
-  <!-- Topbar -->
+  <!-- Top Navigation Bar -->
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand">
-        <h1>Coutos Conveniência</h1>
-        <span class="subtitle">Monitoramento Térmico &amp; Alertas</span>
+      <div class="brand-group">
+        <a href="/" class="brand">
+          <span class="brand-logo">CC</span>
+          <div class="brand-text">
+            <h1>Coutos Conveniência</h1>
+            <span class="subtitle">Monitoramento Térmico &amp; Alertas</span>
+          </div>
+        </a>
+        <nav class="main-nav" aria-label="Navegação Principal">
+          <a href="/" class="active">Painel Operacional</a>
+          <a href="/admin">Usuários &amp; Segurança</a>
+        </nav>
       </div>
-      <div class="topbar-status" id="topbar-controls" style="display:none;">
+
+      <div class="topbar-status">
         <div class="status-chip" title="Conexão com Broker Eclipse Mosquitto">
           <span class="dot" id="dot-mqtt"></span>
           <span>MQTT: <strong id="lbl-mqtt">--</strong></span>
@@ -509,41 +35,17 @@
           <span>PostgreSQL: <strong id="lbl-pg">--</strong></span>
         </div>
         <div class="status-chip" title="Registros aguardando replay no SQLite local">
-          <span>Buffer local: <strong class="tabular" id="lbl-buffer">0</strong></span>
+          <span>Buffer: <strong class="tabular" id="lbl-buffer">0</strong></span>
         </div>
+        <span class="badge badge-info" id="lbl-current-user">Autenticando...</span>
         <button class="btn btn-sm" id="btn-refresh" type="button">Atualizar</button>
+        <button class="btn btn-sm" id="btn-theme-toggle" type="button">☾ Escuro</button>
         <button class="btn btn-sm btn-danger" id="btn-logout" type="button">Sair</button>
       </div>
     </div>
   </header>
 
-  <!-- Tela de Login Restrita -->
-  <section id="login-screen" style="max-width:400px; margin:72px auto; padding:0 16px;">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h2>Acesso Restrito ao Painel</h2>
-          <p>Informe suas credenciais de administrador do sistema</p>
-        </div>
-      </div>
-      <div class="card-body">
-        <form id="form-login">
-          <div class="form-group" style="margin-bottom:12px;">
-            <label for="inp-login-user">Usuário</label>
-            <input type="text" id="inp-login-user" value="admin" required autocomplete="username" />
-          </div>
-          <div class="form-group" style="margin-bottom:14px;">
-            <label for="inp-login-pass">Senha do Painel</label>
-            <input type="password" id="inp-login-pass" required autocomplete="current-password" placeholder="Digite a senha configurada no .env" />
-          </div>
-          <button type="submit" class="btn btn-primary" id="btn-login-submit" style="width:100%;">Entrar no Painel</button>
-          <div class="notice" id="notice-login"></div>
-        </form>
-      </div>
-    </div>
-  </section>
-
-  <main class="container" id="main-dashboard" style="display:none;">
+  <main class="container">
 
     <!-- KPI Cards -->
     <section class="kpi-grid">
@@ -562,12 +64,11 @@
       <div class="kpi-card">
         <div class="kpi-label">
           <span>Faixa Ideal Configurada</span>
-          <span class="badge badge-neutral">Limites</span>
+          <span class="badge badge-neutral" id="badge-quiet-hours">Alertas 24h</span>
         </div>
         <div class="kpi-value small tabular" id="kpi-range">-10,0 °C a 5,0 °C</div>
         <div class="kpi-meta">
-          <span>Cooldown de alerta</span>
-          <span class="tabular" id="kpi-cooldown">300s</span>
+          <span class="tabular" id="kpi-cooldown">Porta: 180s | Cooldown: 300s</span>
         </div>
       </div>
 
@@ -596,936 +97,324 @@
       </div>
     </section>
 
-    <!-- Chart + Threshold Settings -->
-    <section class="grid-main">
-      <div class="card">
+    <!-- Sub-Navigation Tabs -->
+    <div class="tabs-bar" role="tablist">
+      <button type="button" class="tab-btn active" data-tab="pane-overview">Visão Geral &amp; Parâmetros</button>
+      <button type="button" class="tab-btn" data-tab="pane-history">Histórico de Leituras &amp; Alertas</button>
+      <button type="button" class="tab-btn" data-tab="pane-esp">Dispositivo ESP32 (Wi-Fi &amp; OTA)</button>
+      <button type="button" class="tab-btn" data-tab="pane-whatsapp">Gateway WhatsApp (Evolution API)</button>
+    </div>
+
+    <!-- TAB 1: Overview Chart + Threshold Settings -->
+    <div id="pane-overview" class="tab-pane active">
+      <section class="grid-main">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>Curva de Temperatura Recente</h2>
+              <p>Últimas leituras recebidas via MQTT (linhas tracejadas indicam a faixa ideal)</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" class="btn btn-sm" id="btn-manual-replay" title="Forçar sincronização do buffer SQLite local para o PostgreSQL">Sincronizar Buffer</button>
+              <span class="badge badge-neutral tabular" id="chart-count">0 leituras</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-box">
+              <svg class="temp-chart" id="temp-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>Faixa Ideal, Filtro de Porta Aberta &amp; Tempos</h2>
+              <p>Sincroniza com o PostgreSQL, ajusta replay e publica ao ESP32 via MQTT</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form id="form-thresholds">
+              <div class="form-grid">
+                <div class="form-group full">
+                  <label for="inp-dev-name">Nome do Equipamento</label>
+                  <input type="text" id="inp-dev-name" required placeholder="Ex: Câmara Fria Principal" />
+                </div>
+                <div class="form-group">
+                  <label for="inp-min-temp">Mínima Ideal (°C)</label>
+                  <input type="number" id="inp-min-temp" step="0.1" required class="tabular" />
+                </div>
+                <div class="form-group">
+                  <label for="inp-max-temp">Máxima Ideal (°C)</label>
+                  <input type="number" id="inp-max-temp" step="0.1" required class="tabular" />
+                </div>
+                <div class="form-group">
+                  <label for="inp-alert-delay">Filtro de Porta Aberta (s)</label>
+                  <input type="number" id="inp-alert-delay" min="0" max="7200" step="10" required class="tabular" />
+                  <span class="help-text">Tolerância contínua fora da faixa antes do 1º alerta (ex: 180s).</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-cooldown">Cooldown entre alertas (s)</label>
+                  <input type="number" id="inp-cooldown" min="10" step="10" required class="tabular" />
+                  <span class="help-text">Intervalo mínimo entre alertas repetidos no WhatsApp.</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-telemetry-interval">Intervalo de Leitura ESP32 (s)</label>
+                  <input type="number" id="inp-telemetry-interval" min="2" max="3600" step="1" required class="tabular" />
+                  <span class="help-text">Frequência de publicação MQTT do sensor (padrão: 10s).</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-replay-interval">Ciclo de Replay SQLite (s)</label>
+                  <input type="number" id="inp-replay-interval" min="2" max="3600" step="1" required class="tabular" />
+                  <span class="help-text">Sincronização automática do buffer local para o PostgreSQL.</span>
+                </div>
+                <div class="form-group full" style="margin-top:4px; padding-top:10px; border-top:1px solid var(--border);">
+                  <label class="checkbox-row" style="margin:0;">
+                    <input type="checkbox" id="inp-quiet-enabled" />
+                    <span><strong>Modo Sem Alertas (Desligamento Noturno Programado)</strong> — Silencia alertas térmicos e de queda LWT no período configurado</span>
+                  </label>
+                </div>
+                <div class="form-group">
+                  <label for="inp-quiet-start">Início Sem Alertas (Noite)</label>
+                  <input type="time" id="inp-quiet-start" value="23:00" required class="tabular" />
+                  <span class="help-text">Horário em que o freezer é desligado (ex: 23:00).</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-quiet-end">Fim Sem Alertas (Manhã)</label>
+                  <input type="time" id="inp-quiet-end" value="07:00" required class="tabular" />
+                  <span class="help-text">Horário em que os alertas voltam a operar (ex: 07:00).</span>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button type="submit" class="btn btn-primary" id="btn-save-thresholds">Salvar e Publicar via MQTT</button>
+              </div>
+              <div class="notice" id="notice-thresholds"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 2: Telemetry & Alerts Tables -->
+    <div id="pane-history" class="tab-pane">
+      <section class="grid-two">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>Últimas Leituras Registradas</h2>
+              <p>Histórico recente persistido no PostgreSQL</p>
+            </div>
+            <label class="checkbox-row" style="margin:0; font-size:12px;">
+              <input type="checkbox" id="chk-only-out" />
+              <span>Apenas fora da faixa</span>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Horário</th>
+                  <th>Temperatura</th>
+                  <th>Faixa Ideal</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-telemetry">
+                <tr><td colspan="4" class="empty-row">Carregando leituras...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>Histórico de Alertas</h2>
+              <p>Eventos de anomalia térmica e quedas de energia (LWT)</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Horário</th>
+                  <th>Tipo de Alerta</th>
+                  <th>Temp.</th>
+                  <th>WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-alerts">
+                <tr><td colspan="4" class="empty-row">Carregando alertas...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 3: ESP32 Wi-Fi & Secure OTA -->
+    <div id="pane-esp" class="tab-pane">
+      <section class="card">
         <div class="card-header">
           <div>
-            <h2>Curva de Temperatura Recente</h2>
-            <p>Últimas leituras recebidas via MQTT (linhas tracejadas indicam a faixa ideal)</p>
+            <h2>Configuração de Wi-Fi do Dispositivo (ESP32)</h2>
+            <p>Altere a rede Wi-Fi remotamente via MQTT ou ative o Ponto de Acesso WPA2 local do ESP32 (Exclusivo Admin)</p>
           </div>
-          <span class="badge badge-neutral tabular" id="chart-count">0 leituras</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-sm" id="btn-open-esp-web" style="display:none;">Abrir Painel Local ESP32 ↗</a>
+            <button type="button" class="btn btn-sm" id="btn-start-esp-ap">Ativar Rede AP no ESP32 (5 min)</button>
+          </div>
         </div>
         <div class="card-body">
-          <div class="chart-box">
-            <svg class="temp-chart" id="temp-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
-          </div>
+          <form id="form-esp-wifi">
+            <div class="form-grid" style="grid-template-columns: repeat(4, 1fr);">
+              <div class="form-group">
+                <label for="inp-esp-ssid">Novo Wi-Fi (SSID 2.4 GHz)</label>
+                <input type="text" id="inp-esp-ssid" required placeholder="Ex: WiFi_Da_Loja" />
+              </div>
+              <div class="form-group">
+                <label for="inp-esp-pass">Senha do Wi-Fi</label>
+                <input type="password" id="inp-esp-pass" placeholder="Senha da rede Wi-Fi" />
+              </div>
+              <div class="form-group">
+                <label for="inp-esp-mqtt-host">IP / Domínio do Broker MQTT</label>
+                <input type="text" id="inp-esp-mqtt-host" placeholder="Opcional (ex: vps.seudominio.com)" />
+              </div>
+              <div class="form-group" style="justify-content:flex-end;">
+                <button type="submit" class="btn btn-primary" id="btn-save-esp-wifi" style="margin-top:auto;">Enviar Novo Wi-Fi ao ESP32</button>
+              </div>
+            </div>
+            <span class="help-text" style="display:block; margin-top:8px;">
+              Dica: Caso o ESP32 perca conexão na loja, segure o botão <strong>BOOT</strong> por 2 segundos para abrir o Ponto de Acesso protegido por WPA2 (IP <code>http://192.168.4.1</code>).
+            </span>
+            <div class="notice" id="notice-esp-wifi"></div>
+          </form>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card">
         <div class="card-header">
           <div>
-            <h2>Faixa Ideal, Filtro de Porta Aberta &amp; Tempos</h2>
-            <p>Sincroniza com o banco, ajusta replay e envia ao ESP32 via MQTT</p>
+            <h2>Atualização Remota de Firmware (OTA Seguro — HMAC-SHA256 + One-Time Token)</h2>
+            <p>Envie um binário <code>.bin</code> compilado do ESP32. O backend valida o cabeçalho <code>0xE9</code>, calcula o SHA-256 e emite um token único de 180s.</p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="badge badge-neutral tabular" id="badge-fw-version">Firmware: --</span>
+            <span class="badge badge-neutral" id="badge-ota-state">OTA: Pronto</span>
           </div>
         </div>
         <div class="card-body">
-          <form id="form-thresholds">
-            <div class="form-grid">
-              <div class="form-group full">
-                <label for="inp-dev-name">Nome do Equipamento</label>
-                <input type="text" id="inp-dev-name" required placeholder="Ex: Câmara Fria Principal" />
+          <form id="form-esp-ota">
+            <div class="form-grid" style="grid-template-columns: 1.5fr 0.8fr 1.2fr auto;">
+              <div class="form-group">
+                <label for="inp-ota-file">Arquivo Binário do ESP32 (<code>.bin</code>)</label>
+                <input type="file" id="inp-ota-file" accept=".bin" style="padding:6px 8px; font-size:12px; border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg-surface);" />
               </div>
               <div class="form-group">
-                <label for="inp-min-temp">Mínima Ideal (°C)</label>
-                <input type="number" id="inp-min-temp" step="0.1" required class="tabular" />
+                <label for="inp-ota-version">Nova Versão</label>
+                <input type="text" id="inp-ota-version" value="1.2.1" required class="tabular" placeholder="Ex: 1.2.1" />
               </div>
               <div class="form-group">
-                <label for="inp-max-temp">Máxima Ideal (°C)</label>
-                <input type="number" id="inp-max-temp" step="0.1" required class="tabular" />
+                <label for="inp-ota-secret">Chave de Segurança OTA (<code>OTA_SHARED_SECRET</code>)</label>
+                <input type="password" id="inp-ota-secret" required placeholder="Chave secreta do .env" />
               </div>
-              <div class="form-group">
-                <label for="inp-alert-delay">Filtro de Porta Aberta / Reposição (s)</label>
-                <input type="number" id="inp-alert-delay" min="0" max="7200" step="10" required class="tabular" />
-                <span class="help-text">Aguarda este tempo fora da faixa antes do 1º alerta (ex: 180s = 3 min; 0 = imediato).</span>
-              </div>
-              <div class="form-group">
-                <label for="inp-cooldown">Cooldown entre alertas repetidos (s)</label>
-                <input type="number" id="inp-cooldown" min="10" step="10" required class="tabular" />
-                <span class="help-text">Intervalo mínimo entre mensagens repetidas no WhatsApp.</span>
-              </div>
-              <div class="form-group">
-                <label for="inp-telemetry-interval">Intervalo de Leitura do ESP32 (s)</label>
-                <input type="number" id="inp-telemetry-interval" min="2" max="3600" step="1" required class="tabular" />
-                <span class="help-text">Frequência com que o ESP32 lê o sensor e publica no MQTT (padrão: 10s).</span>
-              </div>
-              <div class="form-group">
-                <label for="inp-replay-interval">Tempo de Replay do Buffer Local (s)</label>
-                <input type="number" id="inp-replay-interval" min="2" max="3600" step="1" required class="tabular" />
-                <span class="help-text">Ciclo de sincronização automática do buffer SQLite para o PostgreSQL.</span>
+              <div class="form-group" style="justify-content:flex-end;">
+                <button type="submit" class="btn btn-primary" id="btn-deploy-ota" style="margin-top:auto;">Assinar e Atualizar ESP32</button>
               </div>
             </div>
-            <div class="btn-row">
-              <button type="submit" class="btn btn-primary" id="btn-save-thresholds">Salvar Parâmetros</button>
+
+            <div style="margin-top:14px; background:var(--bg-subtle); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; display:flex; flex-direction:column; gap:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                <span id="lbl-ota-msg" style="color:var(--text-secondary);">Nenhuma atualização em andamento.</span>
+                <span class="tabular" id="lbl-ota-pct" style="font-weight:600;">0%</span>
+              </div>
+              <div style="width:100%; height:7px; background:var(--border-strong); border-radius:4px; overflow:hidden;">
+                <div id="bar-ota-progress" style="width:0%; height:100%; background:var(--blue); transition:width 0.3s ease;"></div>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <span>Segurança: <strong>Pull-Only</strong> + <strong>HMAC-SHA256</strong> + <strong>One-Time Token (180s)</strong> + <strong>Dual-Partition Rollback</strong></span>
+                <span class="tabular" id="lbl-ota-sha256"></span>
+              </div>
             </div>
-            <div class="notice" id="notice-thresholds"></div>
+
+            <div class="notice" id="notice-esp-ota"></div>
           </form>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- ESP32 Wi-Fi & Portal Configuration -->
-    <section class="card">
-      <div class="card-header">
-        <div>
-          <h2>Configuração de Wi-Fi do Dispositivo (ESP32)</h2>
-          <p>Altere a rede Wi-Fi remotamente via MQTT, abra o Ponto de Acesso (<code>Coutos-Freezer-Config</code>) ou acesse o painel interno do ESP32</p>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <a href="#" target="_blank" rel="noopener" class="btn btn-sm" id="btn-open-esp-web" style="text-decoration:none; display:none;">Abrir Painel do ESP32 ↗</a>
-          <button type="button" class="btn btn-sm" id="btn-start-esp-ap">Ativar Rede AP no ESP32 (5 min)</button>
-        </div>
-      </div>
-      <div class="card-body">
-        <form id="form-esp-wifi">
-          <div class="form-grid" style="grid-template-columns: repeat(4, 1fr);">
-            <div class="form-group">
-              <label for="inp-esp-ssid">Novo Wi-Fi (SSID 2.4 GHz)</label>
-              <input type="text" id="inp-esp-ssid" required placeholder="Ex: WiFi_Da_Loja" />
-            </div>
-            <div class="form-group">
-              <label for="inp-esp-pass">Senha do Wi-Fi</label>
-              <input type="password" id="inp-esp-pass" placeholder="Senha da rede Wi-Fi" />
-            </div>
-            <div class="form-group">
-              <label for="inp-esp-mqtt-host">IP / Domínio do Servidor MQTT</label>
-              <input type="text" id="inp-esp-mqtt-host" placeholder="Opcional (ex: 192.168.1.181)" />
-            </div>
-            <div class="form-group" style="justify-content:flex-end;">
-              <button type="submit" class="btn btn-primary" id="btn-save-esp-wifi" style="margin-top:auto;">Enviar Novo Wi-Fi ao ESP32</button>
-            </div>
-          </div>
-          <span class="help-text" style="display:block; margin-top:8px;">
-            Dica: Se o ESP32 estiver sem conexão (ex: levado para outra loja), basta segurar o botão <strong>BOOT</strong> dele por 2 segundos (ou aguardar 15s ao ligar) para ele abrir a rede Wi-Fi <code>Coutos-Freezer-Config</code> (IP <code>http://192.168.4.1</code>).
-          </span>
-          <div class="notice" id="notice-esp-wifi"></div>
-        </form>
-      </div>
-    </section>
-
-    <!-- ESP32 Secure Remote OTA Firmware Update -->
-    <section class="card">
-      <div class="card-header">
-        <div>
-          <h2>Atualização Remota de Firmware (OTA Seguro — HMAC-SHA256 + One-Time Token)</h2>
-          <p>Envie um novo arquivo <code>.bin</code> compilado do ESP32. O servidor valida o cabeçalho <code>0xE9</code>, calcula o hash SHA-256 e gera um link de uso único válido por 180s.</p>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <span class="badge badge-neutral tabular" id="badge-fw-version">Firmware: --</span>
-          <span class="badge badge-neutral" id="badge-ota-state">OTA: Pronto</span>
-        </div>
-      </div>
-      <div class="card-body">
-        <form id="form-esp-ota">
-          <div class="form-grid" style="grid-template-columns: 1.5fr 0.8fr 1.2fr auto;">
-            <div class="form-group">
-              <label for="inp-ota-file">Arquivo Binário do ESP32 (<code>.bin</code>)</label>
-              <input type="file" id="inp-ota-file" accept=".bin" style="padding:6px 8px; font-size:12px; border:1px solid var(--border-strong); border-radius:var(--radius); background:var(--bg-surface);" />
-            </div>
-            <div class="form-group">
-              <label for="inp-ota-version">Nova Versão</label>
-              <input type="text" id="inp-ota-version" value="1.1.0" required class="tabular" placeholder="Ex: 1.1.0" />
-            </div>
-            <div class="form-group">
-              <label for="inp-ota-secret">Chave de Segurança OTA (<code>OTA_SHARED_SECRET</code>)</label>
-              <input type="password" id="inp-ota-secret" required placeholder="Chave secreta do .env" />
-            </div>
-            <div class="form-group" style="justify-content:flex-end;">
-              <button type="submit" class="btn btn-primary" id="btn-deploy-ota" style="margin-top:auto;">Assinar e Atualizar ESP32</button>
-            </div>
-          </div>
-
-          <div style="margin-top:12px; background:var(--bg-subtle); border:1px solid var(--border); border-radius:var(--radius); padding:10px 14px; display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
-              <span id="lbl-ota-msg" style="color:var(--text-secondary);">Nenhuma atualização em andamento.</span>
-              <span class="tabular" id="lbl-ota-pct" style="font-weight:600;">0%</span>
-            </div>
-            <div style="width:100%; height:7px; background:#e2e8f0; border-radius:4px; overflow:hidden;">
-              <div id="bar-ota-progress" style="width:0%; height:100%; background:var(--blue); transition:width 0.3s ease;"></div>
-            </div>
-            <div style="font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-              <span>Segurança ativa: <strong>Pull-Only (Zero portas abertas no ESP32)</strong> + <strong>HMAC-SHA256</strong> + <strong>Token Único (180s)</strong> + <strong>Dual-Partition Rollback</strong></span>
-              <span class="tabular" id="lbl-ota-sha256"></span>
-            </div>
-          </div>
-
-          <div class="notice" id="notice-esp-ota"></div>
-        </form>
-      </div>
-    </section>
-
-    <!-- Evolution API (WhatsApp) Configuration -->
-    <section class="card">
-      <div class="card-header">
-        <div>
-          <h2>Configuração do Gateway WhatsApp (Evolution API)</h2>
-          <p>Configure a URL, credenciais, instância e escaneie o QR Code para envio dos alertas térmicos e de queda de energia</p>
-        </div>
-        <a href="http://localhost:8081/manager" target="_blank" rel="noopener" class="btn btn-sm" style="text-decoration:none;">Abrir Evolution Manager ↗</a>
-      </div>
-      <div class="card-body">
-        <div class="grid-two">
-          <!-- Evolution Form -->
-          <form id="form-evolution">
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="inp-evo-url">URL Interna/Externa da Evolution API</label>
-                <input type="text" id="inp-evo-url" required placeholder="http://evolution_api:8080" />
-                <span class="help-text">Na rede Docker, use <code>http://evolution_api:8080</code>.</span>
-              </div>
-              <div class="form-group">
-                <label for="inp-evo-instance">Nome da Instância</label>
-                <input type="text" id="inp-evo-instance" required placeholder="coutos_alertas" />
-              </div>
-              <div class="form-group">
-                <label for="inp-evo-key">Global API Key (Autenticação)</label>
-                <input type="password" id="inp-evo-key" required placeholder="Chave configurada na Evolution API" />
-              </div>
-              <div class="form-group">
-                <label for="inp-evo-phone">WhatsApp de Destino (Comerciante)</label>
-                <input type="text" id="inp-evo-phone" class="tabular" placeholder="Ex: 5567999999999" />
-                <span class="help-text">Apenas números com DDI (55) + DDD + Número.</span>
-              </div>
-              <div class="form-group full">
-                <label class="checkbox-row">
-                  <input type="checkbox" id="inp-evo-enabled" />
-                  <span>Habilitar disparo automático de notificações via WhatsApp</span>
-                </label>
-              </div>
-            </div>
-            <div class="btn-row">
-              <button type="submit" class="btn btn-primary" id="btn-save-evo">Salvar Configurações</button>
-              <button type="button" class="btn" id="btn-test-wa">Enviar Mensagem de Teste</button>
-            </div>
-            <div class="notice" id="notice-evo"></div>
-          </form>
-
-          <!-- Instance Connection & QR Code -->
-          <div class="qr-panel" id="qr-panel">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span>Estado da Instância:</span>
-              <span class="badge badge-neutral" id="badge-inst-detail">Verificando...</span>
-            </div>
-            <p class="help-text" id="qr-instructions" style="max-width: 360px;">
-              Clique em <strong>Conectar / Gerar QR Code</strong> para criar a instância automaticamente na Evolution API e exibir o QR Code de pareamento.
-            </p>
-            <div id="qr-image-container" style="display:none;">
-              <img id="qr-image" alt="QR Code WhatsApp" />
-            </div>
-            <div class="btn-row" style="justify-content:center; margin-top:6px;">
-              <button type="button" class="btn btn-primary" id="btn-connect-qr">Conectar / Gerar QR Code</button>
-              <button type="button" class="btn btn-sm" id="btn-check-inst">Verificar Status</button>
-              <button type="button" class="btn btn-sm btn-danger" id="btn-logout-inst">Desconectar Sessão</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Tables: Telemetry & Alerts -->
-    <section class="grid-two">
-      <div class="card">
+    <!-- TAB 4: Evolution API (WhatsApp) -->
+    <div id="pane-whatsapp" class="tab-pane">
+      <section class="card">
         <div class="card-header">
           <div>
-            <h2>Últimas Leituras Registradas</h2>
-            <p>Histórico recente persistido no PostgreSQL</p>
+            <h2>Configuração do Gateway WhatsApp (Evolution API v2)</h2>
+            <p>Configure a instância, pareie o QR Code e teste o envio de alertas térmicos e de queda LWT</p>
           </div>
-          <label class="checkbox-row" style="margin:0; font-size:12px;">
-            <input type="checkbox" id="chk-only-out" />
-            <span>Apenas fora da faixa</span>
-          </label>
+          <span class="badge badge-info">API Key Mascarada no Navegador</span>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Horário</th>
-                <th>Temperatura</th>
-                <th>Faixa Ideal</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-telemetry">
-              <tr><td colspan="4" class="empty-row">Carregando leituras...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <div class="card-body">
+          <div class="grid-two">
+            <form id="form-evolution">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="inp-evo-url">URL da Evolution API</label>
+                  <input type="url" id="inp-evo-url" required placeholder="http://evolution_api:8080" />
+                  <span class="help-text">Na rede Docker interna: <code>http://evolution_api:8080</code>.</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-evo-instance">Nome da Instância</label>
+                  <input type="text" id="inp-evo-instance" required placeholder="coutos_alertas" />
+                </div>
+                <div class="form-group">
+                  <label for="inp-evo-key">Global API Key (Autenticação)</label>
+                  <input type="password" id="inp-evo-key" placeholder="Deixe mascarada para manter a atual" />
+                  <span class="help-text">A chave salva nunca é exposta em texto claro para o navegador.</span>
+                </div>
+                <div class="form-group">
+                  <label for="inp-evo-phone">WhatsApp de Destino (Comerciante)</label>
+                  <input type="text" id="inp-evo-phone" class="tabular" placeholder="Ex: 5567999999999" />
+                  <span class="help-text">DDI (55) + DDD + Número (apenas dígitos).</span>
+                </div>
+                <div class="form-group full">
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="inp-evo-enabled" />
+                    <span>Habilitar disparo automático de alertas via WhatsApp</span>
+                  </label>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button type="submit" class="btn btn-primary" id="btn-save-evo">Salvar Configurações</button>
+                <button type="button" class="btn" id="btn-test-wa">Enviar Mensagem de Teste</button>
+              </div>
+              <div class="notice" id="notice-evo"></div>
+            </form>
 
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h2>Histórico de Alertas</h2>
-            <p>Eventos de anomalia térmica e quedas de energia (LWT)</p>
+            <div class="qr-panel" id="qr-panel">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span>Estado da Instância:</span>
+                <span class="badge badge-neutral" id="badge-inst-detail">Verificando...</span>
+              </div>
+              <p class="help-text" id="qr-instructions" style="max-width: 360px;">
+                Clique em <strong>Conectar / Gerar QR Code</strong> para criar a instância automaticamente na Evolution API e exibir o QR Code de pareamento.
+              </p>
+              <div id="qr-image-container" style="display:none;">
+                <img id="qr-image" alt="QR Code WhatsApp" />
+              </div>
+              <div class="btn-row" style="justify-content:center; margin-top:6px;">
+                <button type="button" class="btn btn-primary" id="btn-connect-qr">Conectar / Gerar QR Code</button>
+                <button type="button" class="btn btn-sm" id="btn-check-inst">Verificar Status</button>
+                <button type="button" class="btn btn-sm btn-danger" id="btn-logout-inst">Desconectar Sessão</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Horário</th>
-                <th>Tipo de Alerta</th>
-                <th>Temp.</th>
-                <th>WhatsApp</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-alerts">
-              <tr><td colspan="4" class="empty-row">Carregando alertas...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
   </main>
 
-  <script>
-    const DEVICE_ID = "camara01";
-    let currentDevice = null;
-    let thresholdsFormDirty = false;
-
-    const fmtTemp = (v) => (v === null || v === undefined || isNaN(v)) ? "--" : `${Number(v).toFixed(2).replace(".", ",")} °C`;
-    const fmtTempShort = (v) => (v === null || v === undefined || isNaN(v)) ? "--" : `${Number(v).toFixed(1).replace(".", ",")} °C`;
-    const fmtTime = (iso) => {
-      if (!iso) return "--:--:--";
-      const d = new Date(iso);
-      return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    };
-    const fmtDateTime = (iso) => {
-      if (!iso) return "--";
-      const d = new Date(iso);
-      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    };
-
-    function showNotice(elId, text, isOk = true) {
-      const el = document.getElementById(elId);
-      el.textContent = text;
-      el.className = `notice show ${isOk ? "ok" : "err"}`;
-      setTimeout(() => { el.classList.remove("show"); }, 6000);
-    }
-
-    async function fetchSystemStatus() {
-      try {
-        const res = await fetch("/api/v1/system/status");
-        if (!res.ok) return;
-        const data = await res.json();
-
-        const dotMqtt = document.getElementById("dot-mqtt");
-        const lblMqtt = document.getElementById("lbl-mqtt");
-        dotMqtt.className = `dot ${data.mqtt_connected ? "ok" : "err"}`;
-        lblMqtt.textContent = data.mqtt_connected ? "Conectado" : "Offline";
-
-        const dotPg = document.getElementById("dot-pg");
-        const lblPg = document.getElementById("lbl-pg");
-        dotPg.className = `dot ${data.postgres_connected ? "ok" : "err"}`;
-        lblPg.textContent = data.postgres_connected ? "Ativo" : "Offline";
-
-        document.getElementById("lbl-buffer").textContent = data.local_buffer_pending_records ?? 0;
-      } catch (e) {
-        console.error("Erro ao buscar status:", e);
-      }
-    }
-
-    async function fetchDevice() {
-      try {
-        const res = await fetch(`/api/v1/devices/${DEVICE_ID}`);
-        if (!res.ok) return;
-        const dev = await res.json();
-        currentDevice = dev;
-
-        document.getElementById("kpi-device-name").textContent = `${dev.name} (${dev.device_id})`;
-        document.getElementById("kpi-temp").textContent = fmtTemp(dev.last_temp_c);
-        document.getElementById("kpi-last-time").textContent = fmtTime(dev.last_seen_at);
-        document.getElementById("kpi-range").textContent = `${fmtTempShort(dev.min_temp_c)} a ${fmtTempShort(dev.max_temp_c)}`;
-        document.getElementById("kpi-cooldown").textContent = `Porta: ${dev.alert_delay_seconds ?? 180}s | Cooldown: ${dev.alert_cooldown_seconds}s | Leitura: ${dev.telemetry_interval_seconds ?? 10}s`;
-        document.getElementById("kpi-esp-id").textContent = dev.device_id;
-
-        const badgeTemp = document.getElementById("badge-temp-state");
-        if (dev.last_temp_c === null || dev.last_temp_c === undefined) {
-          badgeTemp.className = "badge badge-neutral";
-          badgeTemp.textContent = "Sem leitura";
-        } else if (dev.last_temp_c < dev.min_temp_c || dev.last_temp_c > dev.max_temp_c) {
-          if (dev.in_door_open_delay) {
-            badgeTemp.className = "badge badge-warn tabular";
-            badgeTemp.textContent = `Porta Aberta (${dev.out_of_range_elapsed_s ?? 0}s / ${dev.alert_delay_seconds ?? 180}s)`;
-          } else {
-            badgeTemp.className = "badge badge-danger";
-            badgeTemp.textContent = "Fora da Faixa";
-          }
-        } else {
-          badgeTemp.className = "badge badge-ok";
-          badgeTemp.textContent = "Dentro da Faixa";
-        }
-
-        const badgeEsp = document.getElementById("badge-esp-status");
-        if (dev.online_status === "online") {
-          badgeEsp.className = "badge badge-ok";
-          badgeEsp.textContent = "Online";
-        } else if (dev.online_status === "offline") {
-          badgeEsp.className = "badge badge-danger";
-          badgeEsp.textContent = "Offline (LWT)";
-        } else {
-          badgeEsp.className = "badge badge-neutral";
-          badgeEsp.textContent = dev.online_status;
-        }
-
-        if (!thresholdsFormDirty) {
-          document.getElementById("inp-dev-name").value = dev.name;
-          document.getElementById("inp-min-temp").value = dev.min_temp_c;
-          document.getElementById("inp-max-temp").value = dev.max_temp_c;
-          document.getElementById("inp-alert-delay").value = dev.alert_delay_seconds ?? 180;
-          document.getElementById("inp-cooldown").value = dev.alert_cooldown_seconds;
-          document.getElementById("inp-telemetry-interval").value = dev.telemetry_interval_seconds ?? 10;
-          document.getElementById("inp-replay-interval").value = dev.replay_interval_seconds ?? 10;
-        }
-
-        const wifiEl = document.getElementById("kpi-esp-wifi");
-        const ipEl = document.getElementById("kpi-esp-ip");
-        const btnEspWeb = document.getElementById("btn-open-esp-web");
-        if (dev.wifi_ssid) {
-          wifiEl.textContent = `Wi-Fi: ${dev.wifi_ssid} (${dev.wifi_rssi ?? "--"} dBm)`;
-        }
-        if (dev.wifi_ip && dev.wifi_ip !== "0.0.0.0") {
-          ipEl.textContent = `IP: ${dev.wifi_ip}`;
-          btnEspWeb.href = `http://${dev.wifi_ip}/`;
-          btnEspWeb.textContent = `Abrir Painel do ESP32 (${dev.wifi_ip}) ↗`;
-          btnEspWeb.style.display = "inline-flex";
-        }
-
-        const fwBadge = document.getElementById("badge-fw-version");
-        if (dev.fw_version) {
-          fwBadge.textContent = `Firmware: v${dev.fw_version}`;
-          fwBadge.className = "badge badge-ok tabular";
-          document.getElementById("kpi-esp-id").textContent = `${dev.device_id} (v${dev.fw_version})`;
-        }
-
-        if (dev.ota_status) {
-          const st = dev.ota_status;
-          const otaBadge = document.getElementById("badge-ota-state");
-          const otaMsg = document.getElementById("lbl-ota-msg");
-          const otaPct = document.getElementById("lbl-ota-pct");
-          const otaBar = document.getElementById("bar-ota-progress");
-          const pct = Math.max(0, Math.min(100, Number(st.progress_pct || 0)));
-
-          otaMsg.textContent = st.message || "Pronto";
-          otaPct.textContent = `${pct}%`;
-          otaBar.style.width = `${pct}%`;
-
-          if (st.state === "downloading" || st.state === "starting" || st.state === "triggered") {
-            otaBadge.className = "badge badge-warn";
-            otaBadge.textContent = `Atualizando (${st.state})`;
-            otaBar.style.background = "var(--blue)";
-          } else if (st.state === "rebooting" || st.state === "success") {
-            otaBadge.className = "badge badge-ok";
-            otaBadge.textContent = "Concluído";
-            otaBar.style.background = "var(--green-dot)";
-          } else if (st.state === "failed") {
-            otaBadge.className = "badge badge-danger";
-            otaBadge.textContent = "Falha / Bloqueado";
-            otaBar.style.background = "var(--red-dot)";
-          } else {
-            otaBadge.className = "badge badge-neutral";
-            otaBadge.textContent = "OTA: Pronto";
-          }
-        }
-      } catch (e) {
-        console.error("Erro ao buscar dispositivo:", e);
-      }
-    }
-
-    function renderChart(records) {
-      const svg = document.getElementById("temp-chart");
-      document.getElementById("chart-count").textContent = `${records.length} leituras`;
-      if (!records || records.length === 0) {
-        svg.innerHTML = `<text x="320" y="110" text-anchor="middle" fill="#64748b" font-size="13">Nenhuma leitura disponível</text>`;
-        return;
-      }
-
-      const ordered = [...records].reverse();
-      const minLimit = currentDevice ? currentDevice.min_temp_c : ordered[0].min_temp_c;
-      const maxLimit = currentDevice ? currentDevice.max_temp_c : ordered[0].max_temp_c;
-
-      const temps = ordered.map(r => r.temperature_c);
-      const rawMin = Math.min(...temps, minLimit);
-      const rawMax = Math.max(...temps, maxLimit);
-      const pad = Math.max(2, (rawMax - rawMin) * 0.15);
-      const yMin = rawMin - pad;
-      const yMax = rawMax + pad;
-
-      const W = 640, H = 220;
-      const padL = 48, padR = 16, padT = 14, padB = 26;
-      const plotW = W - padL - padR;
-      const plotH = H - padT - padB;
-
-      const toY = (val) => padT + plotH - ((val - yMin) / (yMax - yMin || 1)) * plotH;
-      const toX = (idx) => padL + (ordered.length === 1 ? plotW / 2 : (idx / (ordered.length - 1)) * plotW);
-
-      const yMaxLim = toY(maxLimit);
-      const yMinLim = toY(minLimit);
-
-      let html = "";
-      // Safe band shading
-      html += `<rect x="${padL}" y="${Math.min(yMaxLim, yMinLim)}" width="${plotW}" height="${Math.abs(yMinLim - yMaxLim)}" fill="#f0fdf4" opacity="0.7" />`;
-
-      // Limit lines
-      html += `<line x1="${padL}" y1="${yMaxLim}" x2="${W - padR}" y2="${yMaxLim}" stroke="#dc2626" stroke-dasharray="4 4" stroke-width="1" />`;
-      html += `<text x="${padL - 6}" y="${yMaxLim + 4}" text-anchor="end" fill="#dc2626" font-size="10">Máx ${maxLimit.toFixed(0)}°</text>`;
-
-      html += `<line x1="${padL}" y1="${yMinLim}" x2="${W - padR}" y2="${yMinLim}" stroke="#2563eb" stroke-dasharray="4 4" stroke-width="1" />`;
-      html += `<text x="${padL - 6}" y="${yMinLim + 4}" text-anchor="end" fill="#2563eb" font-size="10">Mín ${minLimit.toFixed(0)}°</text>`;
-
-      // Polyline
-      const pts = ordered.map((r, i) => `${toX(i).toFixed(1)},${toY(r.temperature_c).toFixed(1)}`).join(" ");
-      html += `<polyline fill="none" stroke="#0f172a" stroke-width="2" points="${pts}" />`;
-
-      // Points
-      ordered.forEach((r, i) => {
-        const cx = toX(i).toFixed(1);
-        const cy = toY(r.temperature_c).toFixed(1);
-        const color = r.is_out_of_range ? "#dc2626" : "#16a34a";
-        html += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"><title>${fmtTime(r.recorded_at)}: ${fmtTemp(r.temperature_c)}</title></circle>`;
-      });
-
-      // Time axis labels (first, middle, last)
-      const firstT = fmtTime(ordered[0].recorded_at);
-      const lastT = fmtTime(ordered[ordered.length - 1].recorded_at);
-      html += `<text x="${padL}" y="${H - 6}" fill="#64748b" font-size="10">${firstT}</text>`;
-      html += `<text x="${W - padR}" y="${H - 6}" text-anchor="end" fill="#64748b" font-size="10">${lastT}</text>`;
-
-      svg.innerHTML = html;
-    }
-
-    async function fetchTelemetry() {
-      try {
-        const onlyOut = document.getElementById("chk-only-out").checked;
-        const res = await fetch(`/api/v1/telemetry?device_id=${DEVICE_ID}&limit=30&out_of_range_only=${onlyOut}`);
-        if (!res.ok) return;
-        const rows = await res.json();
-
-        renderChart(rows);
-
-        const tbody = document.getElementById("tbody-telemetry");
-        if (rows.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Nenhuma leitura encontrada.</td></tr>`;
-          return;
-        }
-
-        tbody.innerHTML = rows.map(r => {
-          const badge = r.is_out_of_range
-            ? `<span class="badge badge-danger">Fora da faixa</span>`
-            : `<span class="badge badge-ok">Normal</span>`;
-          return `
-            <tr>
-              <td class="tabular">${fmtDateTime(r.recorded_at)}</td>
-              <td class="tabular"><strong>${fmtTemp(r.temperature_c)}</strong></td>
-              <td class="tabular" style="color:var(--text-muted);">${fmtTempShort(r.min_temp_c)} a ${fmtTempShort(r.max_temp_c)}</td>
-              <td>${badge}</td>
-            </tr>
-          `;
-        }).join("");
-      } catch (e) {
-        console.error("Erro ao carregar telemetria:", e);
-      }
-    }
-
-    async function fetchAlerts() {
-      try {
-        const res = await fetch(`/api/v1/alerts?device_id=${DEVICE_ID}&limit=25`);
-        if (!res.ok) return;
-        const rows = await res.json();
-
-        const tbody = document.getElementById("tbody-alerts");
-        if (rows.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Nenhum alerta registrado.</td></tr>`;
-          return;
-        }
-
-        const labelMap = {
-          "TEMP_ABOVE_MAX": { text: "Acima do Máximo", cls: "badge-danger" },
-          "TEMP_BELOW_MIN": { text: "Abaixo do Mínimo", cls: "badge-danger" },
-          "DEVICE_OFFLINE_LWT": { text: "Queda LWT (Offline)", cls: "badge-warn" },
-          "TEMP_NORMALIZED": { text: "Normalizada", cls: "badge-ok" }
-        };
-
-        tbody.innerHTML = rows.map(a => {
-          const meta = labelMap[a.alert_type] || { text: a.alert_type, cls: "badge-neutral" };
-          const waBadge = a.whatsapp_sent
-            ? `<span class="badge badge-ok">Enviado</span>`
-            : `<span class="badge badge-neutral" title="${(a.whatsapp_error || '').replace(/"/g, '&quot;')}">Não enviado</span>`;
-          return `
-            <tr>
-              <td class="tabular">${fmtDateTime(a.created_at)}</td>
-              <td><span class="badge ${meta.cls}">${meta.text}</span></td>
-              <td class="tabular">${a.temperature_c !== null ? fmtTemp(a.temperature_c) : "--"}</td>
-              <td>${waBadge}</td>
-            </tr>
-          `;
-        }).join("");
-      } catch (e) {
-        console.error("Erro ao carregar alertas:", e);
-      }
-    }
-
-    function updateEvolutionStatusBadges(cfg) {
-      document.getElementById("kpi-wa-instance").textContent = cfg.evolution_instance_name || "--";
-      document.getElementById("kpi-wa-phone").textContent = cfg.merchant_whatsapp_number || "Não definido";
-
-      const kpiBadge = document.getElementById("badge-wa-status");
-      const detailBadge = document.getElementById("badge-inst-detail");
-
-      if (cfg.instance_state === "open") {
-        kpiBadge.className = "badge badge-ok";
-        kpiBadge.textContent = "Conectado";
-        detailBadge.className = "badge badge-ok";
-        detailBadge.textContent = "Conectado (open)";
-        document.getElementById("qr-image-container").style.display = "none";
-        document.getElementById("qr-instructions").innerHTML = "WhatsApp conectado e pronto para enviar alertas térmicos e de queda de energia.";
-      } else if (cfg.instance_state === "not_created") {
-        kpiBadge.className = "badge badge-warn";
-        kpiBadge.textContent = "Instância não criada";
-        detailBadge.className = "badge badge-warn";
-        detailBadge.textContent = "Não criada na Evolution";
-      } else if (cfg.instance_state === "connecting" || cfg.instance_state === "close") {
-        kpiBadge.className = "badge badge-warn";
-        kpiBadge.textContent = "Aguardando QR Code";
-        detailBadge.className = "badge badge-warn";
-        detailBadge.textContent = `Aguardando leitura (${cfg.instance_state})`;
-      } else {
-        kpiBadge.className = "badge badge-neutral";
-        kpiBadge.textContent = cfg.instance_state;
-        detailBadge.className = "badge badge-neutral";
-        detailBadge.textContent = cfg.instance_state;
-      }
-    }
-
-    async function fetchEvolutionSettings(populateInputs = false) {
-      try {
-        const res = await fetch("/api/v1/settings/evolution");
-        if (!res.ok) return;
-        const cfg = await res.json();
-
-        if (populateInputs) {
-          document.getElementById("inp-evo-url").value = cfg.evolution_api_url || "";
-          document.getElementById("inp-evo-key").value = cfg.evolution_api_key || "";
-          document.getElementById("inp-evo-instance").value = cfg.evolution_instance_name || "";
-          document.getElementById("inp-evo-phone").value = cfg.merchant_whatsapp_number || "";
-          document.getElementById("inp-evo-enabled").checked = !!cfg.whatsapp_notifications_enabled;
-        }
-
-        updateEvolutionStatusBadges(cfg);
-      } catch (e) {
-        console.error("Erro ao carregar configurações da Evolution API:", e);
-      }
-    }
-
-    // Event Listeners
-    ["inp-dev-name", "inp-min-temp", "inp-max-temp", "inp-alert-delay", "inp-cooldown", "inp-telemetry-interval", "inp-replay-interval"].forEach(id => {
-      document.getElementById(id).addEventListener("input", () => { thresholdsFormDirty = true; });
-    });
-
-    document.getElementById("form-thresholds").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("btn-save-thresholds");
-      btn.disabled = true;
-      try {
-        const payload = {
-          name: document.getElementById("inp-dev-name").value.trim(),
-          min_temp_c: parseFloat(document.getElementById("inp-min-temp").value),
-          max_temp_c: parseFloat(document.getElementById("inp-max-temp").value),
-          alert_delay_seconds: parseInt(document.getElementById("inp-alert-delay").value, 10),
-          alert_cooldown_seconds: parseInt(document.getElementById("inp-cooldown").value, 10),
-          telemetry_interval_seconds: parseInt(document.getElementById("inp-telemetry-interval").value, 10),
-          replay_interval_seconds: parseInt(document.getElementById("inp-replay-interval").value, 10)
-        };
-        const res = await fetch(`/api/v1/devices/${DEVICE_ID}/thresholds`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showNotice("notice-thresholds", data.detail || "Erro ao salvar faixa ideal.", false);
-        } else {
-          thresholdsFormDirty = false;
-          showNotice("notice-thresholds", "Faixa ideal atualizada e publicada para o ESP32 via MQTT.", true);
-          await fetchDevice();
-          await fetchTelemetry();
-        }
-      } catch (err) {
-        showNotice("notice-thresholds", "Falha de comunicação com o servidor.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("form-evolution").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("btn-save-evo");
-      btn.disabled = true;
-      try {
-        const payload = {
-          evolution_api_url: document.getElementById("inp-evo-url").value.trim(),
-          evolution_api_key: document.getElementById("inp-evo-key").value.trim(),
-          evolution_instance_name: document.getElementById("inp-evo-instance").value.trim(),
-          merchant_whatsapp_number: document.getElementById("inp-evo-phone").value.trim(),
-          whatsapp_notifications_enabled: document.getElementById("inp-evo-enabled").checked
-        };
-        const res = await fetch("/api/v1/settings/evolution", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showNotice("notice-evo", data.detail || "Erro ao salvar configurações da Evolution API.", false);
-        } else {
-          updateEvolutionStatusBadges(data);
-          showNotice("notice-evo", "Configurações da Evolution API salvas com sucesso.", true);
-        }
-      } catch (err) {
-        showNotice("notice-evo", "Erro ao comunicar com o backend.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("btn-connect-qr").addEventListener("click", async () => {
-      const btn = document.getElementById("btn-connect-qr");
-      btn.disabled = true;
-      btn.textContent = "Gerando QR Code...";
-      try {
-        const res = await fetch("/api/v1/settings/evolution/connect", { method: "POST" });
-        const data = await res.json();
-        if (data.qrcode_base64) {
-          const img = document.getElementById("qr-image");
-          img.src = data.qrcode_base64.startsWith("data:") ? data.qrcode_base64 : `data:image/png;base64,${data.qrcode_base64}`;
-          document.getElementById("qr-image-container").style.display = "block";
-          document.getElementById("qr-instructions").textContent = "Abra o WhatsApp no celular > Dispositivos conectados > Conectar dispositivo e escaneie o QR Code abaixo:";
-        } else if (data.state === "open") {
-          document.getElementById("qr-image-container").style.display = "none";
-          document.getElementById("qr-instructions").textContent = "A instância já está conectada ao WhatsApp!";
-        } else {
-          showNotice("notice-evo", data.error || "Não foi possível obter o QR Code.", false);
-        }
-        await fetchEvolutionSettings(false);
-      } catch (err) {
-        showNotice("notice-evo", "Erro ao solicitar QR Code da Evolution API.", false);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Conectar / Gerar QR Code";
-      }
-    });
-
-    document.getElementById("btn-check-inst").addEventListener("click", () => fetchEvolutionSettings(false));
-
-    document.getElementById("btn-logout-inst").addEventListener("click", async () => {
-      if (!confirm("Deseja desconectar a sessão atual do WhatsApp nesta instância?")) return;
-      await fetch("/api/v1/settings/evolution/logout", { method: "DELETE" });
-      document.getElementById("qr-image-container").style.display = "none";
-      await fetchEvolutionSettings(false);
-    });
-
-    document.getElementById("btn-test-wa").addEventListener("click", async () => {
-      const btn = document.getElementById("btn-test-wa");
-      btn.disabled = true;
-      try {
-        const phone = document.getElementById("inp-evo-phone").value.trim();
-        const res = await fetch("/api/v1/notifications/test", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: phone || null,
-            message: "✅ [Coutos Conveniência] Teste de notificação enviado pela Interface Web!"
-          })
-        });
-        const data = await res.json();
-        if (data.whatsapp_sent) {
-          showNotice("notice-evo", `Mensagem de teste enviada para ${data.target_phone}!`, true);
-        } else {
-          showNotice("notice-evo", `Falha no envio: ${data.error || "Verifique se o QR Code foi conectado e o número está correto."}`, false);
-        }
-      } catch (err) {
-        showNotice("notice-evo", "Erro ao disparar mensagem de teste.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("form-esp-wifi").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("btn-save-esp-wifi");
-      btn.disabled = true;
-      try {
-        const ssid = document.getElementById("inp-esp-ssid").value.trim();
-        const pass = document.getElementById("inp-esp-pass").value.trim();
-        const host = document.getElementById("inp-esp-mqtt-host").value.trim();
-        const payload = { wifi_ssid: ssid, wifi_pass: pass };
-        if (host) payload.mqtt_host = host;
-
-        const res = await fetch(`/api/v1/devices/${DEVICE_ID}/wifi`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          showNotice("notice-esp-wifi", `Comando enviado ao ESP32 via MQTT! Ele salvará a rede '${ssid}' na memória Flash e reiniciará.`, true);
-        } else {
-          showNotice("notice-esp-wifi", data.detail || "Falha ao publicar comando MQTT para o ESP32.", false);
-        }
-      } catch (err) {
-        showNotice("notice-esp-wifi", "Erro de comunicação com o servidor.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("btn-start-esp-ap").addEventListener("click", async () => {
-      const btn = document.getElementById("btn-start-esp-ap");
-      btn.disabled = true;
-      try {
-        const res = await fetch(`/api/v1/devices/${DEVICE_ID}/wifi`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ start_ap: true })
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          showNotice("notice-esp-wifi", "Ponto de Acesso 'Coutos-Freezer-Config' ativado no ESP32 por 5 minutos (http://192.168.4.1).", true);
-        } else {
-          showNotice("notice-esp-wifi", "Não foi possível enviar o comando para o ESP32.", false);
-        }
-      } catch (err) {
-        showNotice("notice-esp-wifi", "Erro ao comunicar com o servidor.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("form-esp-ota").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("btn-deploy-ota");
-      const fileInput = document.getElementById("inp-ota-file");
-      const version = document.getElementById("inp-ota-version").value.trim() || "1.1.0";
-      const secret = document.getElementById("inp-ota-secret").value.trim();
-
-      if (!secret) {
-        showNotice("notice-esp-ota", "Informe a chave OTA_SHARED_SECRET para assinar a atualização.", false);
-        return;
-      }
-
-      const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-      btn.disabled = true;
-      btn.textContent = "Validando e Assinando...";
-
-      try {
-        const fname = file ? encodeURIComponent(file.name) : "firmware_stored.bin";
-        const url = `/api/v1/devices/${DEVICE_ID}/ota/deploy?version=${encodeURIComponent(version)}&filename=${fname}`;
-        const bodyData = file ? await file.arrayBuffer() : null;
-
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "X-OTA-Secret": secret
-          },
-          body: bodyData
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          document.getElementById("lbl-ota-sha256").textContent = `SHA-256: ${data.sha256.slice(0, 16)}... (${(data.size_bytes / 1024).toFixed(1)} KB)`;
-          showNotice("notice-esp-ota", `${data.message} (SHA-256: ${data.sha256.slice(0, 12)}...)`, true);
-          await fetchDevice();
-        } else {
-          showNotice("notice-esp-ota", data.detail || "Falha ao validar ou disparar OTA.", false);
-        }
-      } catch (err) {
-        showNotice("notice-esp-ota", "Erro de comunicação ao enviar binário OTA.", false);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Assinar e Atualizar ESP32";
-      }
-    });
-
-    document.getElementById("chk-only-out").addEventListener("change", fetchTelemetry);
-    document.getElementById("btn-refresh").addEventListener("click", refreshAll);
-
-    let dashboardAuthenticated = false;
-    let pollTimer1 = null;
-    let pollTimer2 = null;
-
-    function setAuthenticatedUI(isAuth) {
-      dashboardAuthenticated = isAuth;
-      document.getElementById("login-screen").style.display = isAuth ? "none" : "block";
-      document.getElementById("main-dashboard").style.display = isAuth ? "flex" : "none";
-      document.getElementById("topbar-controls").style.display = isAuth ? "flex" : "none";
-    }
-
-    async function refreshAll() {
-      if (!dashboardAuthenticated) return;
-      await Promise.all([
-        fetchSystemStatus(),
-        fetchDevice(),
-        fetchTelemetry(),
-        fetchAlerts()
-      ]);
-    }
-
-    async function startAuthenticatedLoops() {
-      setAuthenticatedUI(true);
-      await fetchEvolutionSettings(true);
-      await refreshAll();
-      if (!pollTimer1) pollTimer1 = setInterval(refreshAll, 5000);
-      if (!pollTimer2) pollTimer2 = setInterval(() => { if (dashboardAuthenticated) fetchEvolutionSettings(false); }, 12000);
-    }
-
-    document.getElementById("form-login").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("btn-login-submit");
-      btn.disabled = true;
-      try {
-        const res = await fetch("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: document.getElementById("inp-login-user").value.trim(),
-            password: document.getElementById("inp-login-pass").value
-          })
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          document.getElementById("inp-login-pass").value = "";
-          await startAuthenticatedLoops();
-        } else {
-          showNotice("notice-login", data.detail || "Usuário ou senha incorretos.", false);
-        }
-      } catch (err) {
-        showNotice("notice-login", "Erro ao conectar com o servidor.", false);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    document.getElementById("btn-logout").addEventListener("click", async () => {
-      await fetch("/api/v1/auth/logout", { method: "POST" });
-      setAuthenticatedUI(false);
-    });
-
-    // Inicialização: verifica se já existe sessão ativa no Cookie HttpOnly
-    (async () => {
-      try {
-        const res = await fetch("/api/v1/auth/check");
-        const data = await res.json();
-        if (res.ok && data.authenticated) {
-          await startAuthenticatedLoops();
-        } else {
-          setAuthenticatedUI(false);
-        }
-      } catch (e) {
-        setAuthenticatedUI(false);
-      }
-    })();
-  </script>
+  <script src="/static/js/core.js"></script>
+  <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
